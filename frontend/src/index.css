@@ -1,0 +1,120 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background-color: #050816;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: #050816;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(53, 208, 127, 0.16), transparent 38%),
+    radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.14), transparent 40%),
+    radial-gradient(circle at 50% 80%, rgba(249, 115, 22, 0.08), transparent 45%),
+    linear-gradient(145deg, rgba(5, 8, 22, 0.85), #050816);
+  background-attachment: fixed;
+  color: #f9fafb;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 140px 140px;
+  opacity: 0.35;
+  mix-blend-mode: screen;
+  z-index: -1;
+}
+
+@keyframes cardFlipIn {
+  from {
+    transform: rotateY(90deg);
+    opacity: 0;
+  }
+  to {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes cardPulse {
+  0% {
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+  }
+}
+
+.animate-card-flip {
+  animation: cardFlipIn 0.6s ease forwards;
+  transform-style: preserve-3d;
+}
+
+.animate-card-pulse {
+  animation: cardPulse 2s ease-in-out infinite;
+}
+
+.card-face-hidden {
+  transform: rotateY(180deg);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@layer components {
+  .glass-panel {
+    @apply border border-white/10 bg-white/5;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(22px);
+    box-shadow: 0 25px 55px rgba(5, 8, 22, 0.45);
+  }
+
+  .glass-panel::before,
+  .glass-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.65;
+    z-index: 0;
+  }
+
+  .glass-panel::before {
+    background: radial-gradient(circle at 15% 15%, rgba(53, 208, 127, 0.18), transparent 45%);
+  }
+
+  .glass-panel::after {
+    background: linear-gradient(120deg, rgba(139, 92, 246, 0.18), transparent 60%);
+    mix-blend-mode: screen;
+  }
+
+  .glass-panel > * {
+    position: relative;
+    z-index: 1;
+  }
+}

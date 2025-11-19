@@ -1,0 +1,13 @@
+node_modules
+frontend/node_modules
+backend/node_modules
+contracts/node_modules
+dist
+backend/dist
+frontend/dist
+.git
+.gitignore
+Dockerfile
+*.log
+tmp
+.DS_Store

@@ -1,0 +1,171 @@
+.PHONY: help install lint test \
+	frontend-install backend-install contracts-install \
+	frontend-dev backend-dev contracts-node \
+	contracts-compile contracts-test contracts-deploy-local \
+	docker-build-backend docker-push-backend \
+	lambda-deploy apigw-deploy deploy-backend \
+	frontend-build frontend-upload frontend-deploy
+
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+
+AWS_REGION ?= af-south-1
+AWS_ACCOUNT_ID ?= 000000000000
+ECR_REPO ?= REPO_NAME_HERE
+IMAGE_TAG ?= latest
+IMAGE_NAME ?= REPO_NAME_HERE
+IMAGE_URI := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(ECR_REPO):$(IMAGE_TAG)
+LAMBDA_NAME ?= REPO_NAME_HERE
+LAMBDA_ROLE_ARN ?= arn:aws:iam::000000000000:role/REPO_NAME_HERE
+API_NAME ?= REPO_NAME_HERE-http
+API_STAGE ?= prod
+S3_BUCKET ?= REPO_NAME_HERE
+FRONTEND_BUILD_DIR ?= frontend/dist
+
+export AWS_REGION
+
+NPM ?= npm
+
+help:
+	@echo "PocketPoker workspace commands:"
+	@echo "  make install              Install deps (root + workspaces)"
+	@echo "  make lint                 Run ESLint"
+	@echo "  make test                 Run tests"
+	@echo "  make frontend-dev         Start Vite dev server"
+	@echo "  make backend-dev          Start backend dev server"
+	@echo "  make contracts-node       Start Hardhat node"
+	@echo "  make deploy-backend       Build+push image, deploy Lambda + API GW"
+	@echo "  make frontend-deploy      Build + upload SPA to S3"
+
+# If using npm workspaces, this can just be "npm install"
+install:
+	@$(NPM) install
+
+lint:
+	@$(NPM) run lint
+
+test:
+	@$(NPM) run test
+
+frontend-install:
+	@if [ -f frontend/package.json ]; then
+		echo "Installing frontend dependencies..."
+		cd frontend && $(NPM) install
+	else
+		echo "frontend/package.json not found, skipping."
+	fi
+
+backend-install:
+	@if [ -f backend/package.json ]; then
+		echo "Installing backend dependencies..."
+		cd backend && $(NPM) install
+	else
+		echo "backend not initialized yet, skipping."
+	fi
+
+contracts-install:
+	@if [ -f contracts/package.json ]; then
+		echo "Installing contracts dependencies..."
+		cd contracts && $(NPM) install
+	else
+		echo "contracts workspace not initialized yet, skipping."
+	fi
+
+contracts-compile:
+	@if [ -f contracts/package.json ]; then
+		cd contracts && $(NPM) run compile
+	else
+		echo "Contracts workspace missing."
+	fi
+
+contracts-test:
+	@if [ -f contracts/package.json ]; then
+		cd contracts && $(NPM) test
+	else
+		echo "Contracts workspace missing."
+	fi
+
+frontend-dev:
+	cd frontend && $(NPM) run dev
+
+backend-dev:
+	@if [ -f backend/package.json ]; then
+		cd backend && $(NPM) run dev
+	else
+		echo "Backend workspace missing. Complete Phase 2 scaffolding first."
+	fi
+
+contracts-node:
+	@if [ -f contracts/package.json ]; then
+		cd contracts && npx hardhat node
+	else
+		echo "Contracts workspace missing. Complete Phase 3 scaffolding first."
+	fi
+
+contracts-deploy-local:
+	@if [ -f contracts/package.json ]; then
+		cd contracts && $(NPM) run deploy:local
+	else
+		echo "Contracts workspace missing."
+	fi
+
+docker-build-backend:
+	# adjust "backend" to "." if your Dockerfile is at repo root
+	docker buildx build \
+    	--platform linux/arm64 \
+		--provenance=false \
+    	-t pocketpoker-backend:latest \
+    	-t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/pocketpoker-backend:latest \
+		.
+
+docker-push-backend: docker-build-backend
+	@aws ecr describe-repositories --repository-name $(ECR_REPO) --region $(AWS_REGION) >/dev/null 2>&1 || \
+		aws ecr create-repository --repository-name $(ECR_REPO) --region $(AWS_REGION)
+	aws ecr get-login-password --region $(AWS_REGION) | \
+		docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+	docker push $(IMAGE_URI)
+
+lambda-deploy:
+	@if aws lambda get-function --function-name $(LAMBDA_NAME) --region $(AWS_REGION) >/dev/null 2>&1; then \
+		echo "Updating existing Lambda function $(LAMBDA_NAME)..."; \
+		aws lambda update-function-code \
+			--function-name $(LAMBDA_NAME) \
+			--image-uri $(IMAGE_URI) \
+			--region $(AWS_REGION); \
+	else \
+		echo "Creating Lambda function $(LAMBDA_NAME)..."; \
+		aws lambda create-function \
+			--function-name $(LAMBDA_NAME) \
+			--package-type Image \
+			--code ImageUri=$(IMAGE_URI) \
+			--role $(LAMBDA_ROLE_ARN) \
+			--timeout 15 \
+			--architectures arm64 \
+			--memory-size 512 \
+			--region $(AWS_REGION); \
+	fi
+
+apigw-deploy:
+	@AWS_REGION=$(AWS_REGION) \
+	 AWS_ACCOUNT_ID=$(AWS_ACCOUNT_ID) \
+	 API_NAME=$(API_NAME) \
+	 API_STAGE=$(API_STAGE) \
+	 LAMBDA_NAME=$(LAMBDA_NAME) \
+	 ./scripts/deploy_apigw.sh
+
+deploy-backend: docker-push-backend lambda-deploy apigw-deploy
+	@echo "Backend deployed."
+
+frontend-build:
+	cd frontend && $(NPM) run build
+
+frontend-upload:
+	if [ ! -d $(FRONTEND_BUILD_DIR) ]; then
+		echo "Build directory $(FRONTEND_BUILD_DIR) not found. Run make frontend-build first."
+		exit 1
+	fi
+	aws s3 sync $(FRONTEND_BUILD_DIR)/ s3://$(S3_BUCKET)/ --delete --region $(AWS_REGION) --cache-control "public,max-age=31536000" --exclude "index.html"
+	aws s3 cp $(FRONTEND_BUILD_DIR)/index.html s3://$(S3_BUCKET)/index.html --region $(AWS_REGION) --cache-control "no-cache" --content-type text/html
+
+frontend-deploy: frontend-build frontend-upload
+	@echo "Frontend deployed to s3://$(S3_BUCKET)"

@@ -1,0 +1,20 @@
+{
+  "name": "pocketpoker_celo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PocketPoker monorepo housing frontend, backend, and contracts for the MiniPay poker MVP.",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "contracts"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --check ."
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3"
+  }
+}

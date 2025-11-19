@@ -1,0 +1,35 @@
+import type { FastifyInstance } from 'fastify'
+import { store } from '../data/store'
+
+export async function registerMetaRoutes(app: FastifyInstance) {
+  app.get('/decks', async () => ({ decks: store.getDecks() }))
+  app.get('/missions', async () => ({ missions: store.getMissions() }))
+  app.get('/leaderboard', async () => ({ leaderboard: store.getLeaderboard() }))
+
+  app.post('/decks/equip', async (request, reply) => {
+    const body = request.body as { walletAddress?: string; deckId?: string }
+    if (!body?.walletAddress || !body?.deckId) {
+      return reply.status(400).send({ error: 'walletAddress and deckId are required' })
+    }
+    const profile = store.getOrCreateProfile(body.walletAddress)
+    if (!profile.unlockedDeckIds.includes(body.deckId)) {
+      return reply.status(400).send({ error: 'Deck not unlocked' })
+    }
+    profile.activeDeckId = body.deckId
+    store.updateProfile(profile)
+    return { profile }
+  })
+
+  app.post('/decks/unlock', async (request, reply) => {
+    const body = request.body as { walletAddress?: string; deckId?: string }
+    if (!body?.walletAddress || !body?.deckId) {
+      return reply.status(400).send({ error: 'walletAddress and deckId are required' })
+    }
+    const profile = store.getOrCreateProfile(body.walletAddress)
+    if (!profile.unlockedDeckIds.includes(body.deckId)) {
+      profile.unlockedDeckIds.push(body.deckId)
+      store.updateProfile(profile)
+    }
+    return { profile }
+  })
+}

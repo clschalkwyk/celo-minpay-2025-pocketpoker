@@ -1,0 +1,3 @@
+[MCP_servers.celo]
+command = "uvx"
+args = ["--refresh", "celo-mcp"]
