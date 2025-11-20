@@ -16,7 +16,7 @@ import { useMissionContext } from './MissionProvider'
 import { Api, mapMatchPayloadToState } from '../lib/api'
 
 export type MatchQueueStatus = 'idle' | 'funding' | 'searching' | 'waiting' | 'timeout' | 'error'
-export type MatchConnectionStatus = 'idle' | 'connected' | 'reconnecting' | 'lost'
+export type MatchConnectionStatus = 'idle' | 'polling'
 
 type MatchContextValue = {
   match?: MatchState
@@ -38,45 +38,14 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
   const { address } = useMiniPayContext()
   const { applyMatchResult, refreshProfile } = useProfileContext()
   const { recordMatchProgress } = useMissionContext()
-  const socketRef = useRef<WebSocket>()
-  const closingSocketRef = useRef(false)
-  const matchRef = useRef<MatchState | undefined>(undefined)
   const queueTicketRef = useRef<string | undefined>(undefined)
-  const queueTimeoutRef = useRef<number>()
+  const queueTimeoutRef = useRef<number | undefined>(undefined)
   const enableBotMatches = (import.meta.env.VITE_ENABLE_BOT_MATCHES ?? 'true') === 'true'
   const matchTimeoutMs = Number(import.meta.env.VITE_MATCH_TIMEOUT_MS ?? 15000)
-  const maxSocketRetries = 3
-  const reconnectDelayMs = Number(import.meta.env.VITE_WS_RECONNECT_DELAY_MS ?? 1200)
-  const socketRetryRef = useRef(0)
-  const reconnectTimeoutRef = useRef<number>()
-  const connectSocketRef = useRef<(matchId: string) => void>()
-
-  useEffect(() => {
-    matchRef.current = match
-  }, [match])
-
-  const clearReconnectTimeout = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      window.clearTimeout(reconnectTimeoutRef.current)
-      reconnectTimeoutRef.current = undefined
-    }
-  }, [])
-
-  const cleanupSocket = useCallback(
-    (options?: { resetRetries?: boolean }) => {
-      clearReconnectTimeout()
-      if (socketRef.current) {
-        closingSocketRef.current = true
-        socketRef.current.close()
-        socketRef.current = undefined
-        closingSocketRef.current = false
-      }
-      if (options?.resetRetries ?? true) {
-        socketRetryRef.current = 0
-      }
-    },
-    [clearReconnectTimeout],
-  )
+  const matchPollIntervalMs = Number(import.meta.env.VITE_MATCH_POLL_INTERVAL_MS ?? 4000)
+  const pollFailureLimit = 3
+  const pollIntervalRef = useRef<number | undefined>(undefined)
+  const pollFailureRef = useRef(0)
 
   const clearQueueTimeout = useCallback(() => {
     if (queueTimeoutRef.current) {
@@ -107,58 +76,43 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     setQueueing(false)
   }, [clearQueueTimeout])
 
-  const handleSocketDrop = useCallback(
-    (matchId?: string) => {
-      const activeMatch = matchRef.current
-      if (!activeMatch || activeMatch.phase === 'result') return
-      const targetMatchId = matchId ?? activeMatch.id
-      if (socketRetryRef.current >= maxSocketRetries) {
-        pushToast('Unable to reconnect to the match. Please return to the lobby.', 'error')
-        cleanupSocket()
-        setConnectionStatus('lost')
-        return
-      }
-      const attempt = socketRetryRef.current + 1
-      socketRetryRef.current = attempt
-      pushToast(`Connection lost. Reconnecting... (${attempt}/${maxSocketRetries})`, 'info')
-      setConnectionStatus('reconnecting')
-      clearReconnectTimeout()
-      reconnectTimeoutRef.current = window.setTimeout(() => {
-        reconnectTimeoutRef.current = undefined
-        connectSocketRef.current?.(targetMatchId)
-      }, reconnectDelayMs)
-    },
-    [cleanupSocket, clearReconnectTimeout, pushToast, reconnectDelayMs, maxSocketRetries],
-  )
+  const stopMatchPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      window.clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = undefined
+    }
+    pollFailureRef.current = 0
+    setConnectionStatus('idle')
+  }, [])
 
-  const attachSocket = useCallback(
+  const startMatchPolling = useCallback(
     (matchId: string) => {
-      cleanupSocket({ resetRetries: false })
-      const socket = Api.openMatchSocket(matchId, (payload) => {
-        if (!payload?.payload) return
-        setMatch(mapMatchPayloadToState(payload.payload))
-      })
-      socket.onopen = () => {
-        socketRetryRef.current = 0
-        setConnectionStatus('connected')
-      }
-      socket.onerror = (event) => {
-        if (!closingSocketRef.current) {
-          console.error('Match socket error', event)
+      stopMatchPolling()
+      const fetchState = async () => {
+        try {
+          const response = await Api.getMatch(matchId)
+          pollFailureRef.current = 0
+          setMatch(mapMatchPayloadToState(response.match))
+          if (response.match.state === 'finished' || response.match.resultSummary) {
+            stopMatchPolling()
+          }
+        } catch (err) {
+          pollFailureRef.current += 1
+          console.error('Failed to poll match state', err)
+          if (pollFailureRef.current >= pollFailureLimit) {
+            stopMatchPolling()
+            pushToast('Connection lost. Return to the lobby to re-queue.', 'error')
+          } else {
+            pushToast('Re-syncing match…', 'info')
+          }
         }
       }
-      socket.onclose = (event) => {
-        if (closingSocketRef.current || event.wasClean) return
-        handleSocketDrop(matchId)
-      }
-      socketRef.current = socket
+      void fetchState()
+      pollIntervalRef.current = window.setInterval(fetchState, matchPollIntervalMs)
+      setConnectionStatus('polling')
     },
-    [cleanupSocket, handleSocketDrop],
+    [matchPollIntervalMs, pollFailureLimit, pushToast, stopMatchPolling],
   )
-
-  useEffect(() => {
-    connectSocketRef.current = attachSocket
-  }, [attachSocket])
 
   const queueForMatch = useCallback(
     async (stake: number) => {
@@ -178,9 +132,8 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
           setMatch(mapped)
           resetQueueState()
           closeMatchmaking()
-          attachSocket(mapped.id)
+          startMatchPolling(mapped.id)
           pushToast('Match found! Shuffling cards...', 'success')
-          setConnectionStatus('connected')
           return mapped
         }
         queueTicketRef.current = response.ticketId
@@ -211,7 +164,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       address,
       enableBotMatches,
       resetQueueState,
-      attachSocket,
+      startMatchPolling,
       startQueueTimeout,
       refreshProfile,
     ],
@@ -224,11 +177,10 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
         .catch((err) => console.error('Failed to cancel queue', err))
     }
     resetQueueState()
-    cleanupSocket()
-    setConnectionStatus('idle')
+    stopMatchPolling()
     setMatch(undefined)
     closeMatchmaking()
-  }, [address, cleanupSocket, closeMatchmaking, match, resetQueueState, refreshProfile])
+  }, [address, closeMatchmaking, match, resetQueueState, refreshProfile, stopMatchPolling])
 
   const acknowledgeResult = useCallback(() => {
     if (match?.result) {
@@ -236,18 +188,18 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       recordMatchProgress({ xpEarned, matchesPlayed: 1 })
       void refreshProfile()
     }
-    cleanupSocket()
+    stopMatchPolling()
     resetQueueState()
     setConnectionStatus('idle')
     setMatch(undefined)
-  }, [match, applyMatchResult, refreshProfile, cleanupSocket, resetQueueState, recordMatchProgress])
+  }, [match, applyMatchResult, refreshProfile, resetQueueState, recordMatchProgress, stopMatchPolling])
 
   useEffect(
     () => () => {
-      cleanupSocket()
+      stopMatchPolling()
       clearQueueTimeout()
     },
-    [cleanupSocket, clearQueueTimeout],
+    [clearQueueTimeout, stopMatchPolling],
   )
 
   const value = useMemo(

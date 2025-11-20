@@ -32,3 +32,14 @@ Connect to `/ws/:matchId` to receive:
 ## Environment
 
 Set `PORT` (defaults to `4000`). Mission/deck/leaderboard data and matches are currently stored in memory. Replace the `DataStore` with Prisma/SQLite or another persistence layer when ready.
+
+## AWS Lambda Deployment
+
+Builds now emit `dist/lambda.js`, which exposes a `handler` produced through `@fastify/aws-lambda`. Use that handler when wiring the backend to API Gateway/Lambda:
+
+```ts
+import { handler } from './dist/lambda.js'
+export { handler }
+```
+
+The handler lazily boots the Fastify instance from `src/server.ts` so cold starts stay low while keeping the regular `npm start` workflow untouched.

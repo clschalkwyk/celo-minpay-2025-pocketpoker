@@ -27,6 +27,7 @@ const sampleProfile: UserProfile = {
   xp: 200,
   xpToNextLevel: 400,
   elo: 1200,
+  credits: 100,
   stats: { matches: 10, wins: 6, losses: 4, streak: 1 },
   activeDeckId: 'deck',
   unlockedDeckIds: ['deck'],
@@ -69,9 +70,11 @@ const MatchHarness = () => {
 describe('state hooks', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.spyOn(window, 'setInterval').mockImplementation(() => 0 as unknown as number)
+    vi.spyOn(window, 'clearInterval').mockImplementation(() => {})
     vi.spyOn(Api, 'initProfile').mockResolvedValue({ profile: sampleProfile })
     vi.spyOn(Api, 'queueMatch').mockResolvedValue({ status: 'matched', match: matchPayload })
-    vi.spyOn(Api, 'openMatchSocket').mockImplementation(() => ({ close: vi.fn() } as unknown as WebSocket))
+    vi.spyOn(Api, 'getMatch').mockResolvedValue({ match: matchPayload })
   })
 
   afterEach(() => {

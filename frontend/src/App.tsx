@@ -12,6 +12,7 @@ import { ProfileScreen } from './screens/ProfileScreen'
 import { AppProviders } from './providers/AppProviders'
 import { MatchmakingModal } from './components/match/MatchmakingModal'
 import { ToastStack } from './components/ui/ToastStack'
+import { DebugOverlay } from './components/debug/DebugOverlay'
 
 const App = () => (
   <AppProviders>
@@ -31,6 +32,7 @@ const App = () => (
       </Routes>
       <MatchmakingModal />
       <ToastStack />
+      <DebugOverlay />
     </BrowserRouter>
   </AppProviders>
 )

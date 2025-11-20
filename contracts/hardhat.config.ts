@@ -4,7 +4,7 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-const { PRIVATE_KEY, CELO_ALFAJORES_RPC_URL, CELO_MAINNET_RPC_URL, CELO_SEPOLIA_RPC_URL, LOCAL_RPC_URL } = process.env
+const { PRIVATE_KEY, CELO_MAINNET_RPC_URL, CELO_SEPOLIA_RPC_URL, LOCAL_RPC_URL } = process.env
 
 const sharedAccounts = PRIVATE_KEY ? [PRIVATE_KEY] : undefined
 
@@ -23,11 +23,6 @@ const config: HardhatUserConfig = {
     localhost: {
       url: LOCAL_RPC_URL || 'http://127.0.0.1:8545',
       chainId: 31337,
-    },
-    alfajores: {
-      url: CELO_ALFAJORES_RPC_URL || 'https://alfajores-forno.celo-testnet.org',
-      accounts: sharedAccounts,
-      chainId: 44787,
     },
     celo: {
       url: CELO_MAINNET_RPC_URL || 'https://forno.celo.org',

@@ -21,6 +21,7 @@ export const stakeTiers: StakeTier[] = [
 
 const baseProfile: UserProfile = {
   id: 'player-001',
+  walletAddress: '0xMockUser',
   username: 'NeoStacker',
   avatarUrl: 'https://avatar.vercel.sh/neo.svg?size=120',
   rankTitle: 'Street Ace',
@@ -28,6 +29,7 @@ const baseProfile: UserProfile = {
   xp: 1420,
   xpToNextLevel: 1600,
   elo: 1532,
+  credits: 100,
   stats: {
     matches: 188,
     wins: 103,

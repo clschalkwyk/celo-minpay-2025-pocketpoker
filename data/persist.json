@@ -1,0 +1,25 @@
+{
+  "creatorDecks": [
+    {
+      "id": "creator-sub-1",
+      "deckName": "Joburg Neon Cascade",
+      "creatorName": "Studio Zazi",
+      "rarity": "legendary",
+      "description": "Electric lines inspired by Johannesburg nightlife.",
+      "previewImageUrl": "/deck_6.jpg",
+      "status": "pending",
+      "submittedAt": 1763543060996
+    },
+    {
+      "id": "creator-sub-2",
+      "deckName": "Ubuntu Bloom",
+      "creatorName": "Aya Creative",
+      "rarity": "rare",
+      "description": "Beaded florals celebrating community potluck nights.",
+      "previewImageUrl": "/deck_7.jpg",
+      "status": "approved",
+      "submittedAt": 1763474660996
+    }
+  ],
+  "purchases": []
+}

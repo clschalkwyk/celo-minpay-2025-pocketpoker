@@ -47,8 +47,8 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
     (initialMatch): RevealState => ({ opponentRevealed: Boolean(initialMatch.result), revealCountdown: null }),
   )
   const totalSeconds = Math.round(revealDelayMs / 1000)
-  const countdownIntervalRef = useRef<number>()
-  const revealTimeoutRef = useRef<number>()
+  const countdownIntervalRef = useRef<number | undefined>(undefined)
+  const revealTimeoutRef = useRef<number | undefined>(undefined)
   const revealNotifiedRef = useRef(false)
   const latestResultRef = useRef(match.result)
   const youWin = match.result?.winner === 'you'

@@ -22,7 +22,7 @@ export const requestAccounts = async (provider: EthereumProvider) => {
 }
 
 export const fetchBalance = async (provider: EthereumProvider, address: string) => {
-  const balanceHex = await provider.request({ method: 'eth_getBalance', params: [address, 'latest'] })
+  const balanceHex = (await provider.request({ method: 'eth_getBalance', params: [address, 'latest'] })) as string
   return Number(BigInt(balanceHex)) / 1e18
 }
 

@@ -6,7 +6,6 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
-    "deploy:alfajores": "hardhat run scripts/deploy.ts --network alfajores",
     "deploy:celo": "hardhat run scripts/deploy.ts --network celo",
     "deploy:celo-sepolia": "hardhat run scripts/deploy.ts --network celoSepolia"
   },

@@ -12,7 +12,6 @@ import type {
 } from '../types'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
-const WS_BASE = import.meta.env.VITE_WS_URL || BACKEND_URL.replace('http', 'ws') + '/ws'
 
 const toJson = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
@@ -66,11 +65,6 @@ export type ApiPlayer = {
   deckId: string
   ready: boolean
   cards: Card[]
-}
-
-type MatchEvent = {
-  type?: string
-  payload?: MatchPayload
 }
 
 export const Api = {
@@ -162,18 +156,6 @@ export const Api = {
       body: JSON.stringify({ walletAddress }),
     }),
   getMatch: (id: string) => request<{ match: MatchPayload }>(`/match/${id}`),
-  openMatchSocket: (matchId: string, onMessage: (data: MatchEvent) => void) => {
-    const socket = new WebSocket(`${WS_BASE}/${matchId}`)
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data)
-        onMessage(payload)
-      } catch (err) {
-        console.error('Failed to parse WS payload', err)
-      }
-    }
-    return socket
-  },
 }
 
 export const mapMatchPayloadToState = (payload: MatchPayload): MatchState => ({

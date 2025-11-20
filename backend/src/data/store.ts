@@ -18,6 +18,10 @@ const resolveDataDir = () => {
   if (process.env.DATA_DIR) {
     return process.env.DATA_DIR
   }
+  const isLambdaEnv = Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME ?? process.env.LAMBDA_TASK_ROOT)
+  if (isLambdaEnv) {
+    return path.join('/tmp', 'pocketpoker-data')
+  }
   const nestedPath = path.join(process.cwd(), 'backend', 'data')
   if (fs.existsSync(nestedPath)) {
     return nestedPath

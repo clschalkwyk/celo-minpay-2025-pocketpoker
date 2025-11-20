@@ -5,9 +5,6 @@ import { ResultOverlay } from '../components/match/ResultOverlay'
 import { useMatch } from '../hooks/useMatch'
 import { SecondaryButton } from '../components/ui/SecondaryButton'
 import { useUIStore } from '../hooks/useUIStore'
-import { AlertBanner } from '../components/ui/AlertBanner'
-import { RefreshCcw, WifiOff } from 'lucide-react'
-
 const resultDelayMs = Number(import.meta.env.VITE_RESULT_OVERLAY_DELAY_MS ?? 6000)
 const resultDelaySeconds = Math.round(resultDelayMs / 1000)
 
@@ -49,15 +46,15 @@ const reduceResultState = (state: ResultState, action: ResultAction): ResultStat
 export const MatchScreen = () => {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { match, acknowledgeResult, queueForMatch, connectionStatus, cancelMatch } = useMatch()
+  const { match, acknowledgeResult, queueForMatch } = useMatch()
   const { setSelectedStake } = useUIStore()
   const [resultState, dispatch] = useReducer(reduceResultState, {
     revealCompletedMatchId: undefined,
     resultVisible: false,
     resultCountdown: null,
   })
-  const resultTimeoutRef = useRef<number>()
-  const countdownRef = useRef<number>()
+  const resultTimeoutRef = useRef<number | undefined>(undefined)
+  const countdownRef = useRef<number | undefined>(undefined)
   const matchId = match?.id
   const revealComplete = Boolean(matchId && resultState.revealCompletedMatchId === matchId)
   const { resultVisible, resultCountdown } = resultState
@@ -94,29 +91,9 @@ export const MatchScreen = () => {
 
   if (!match) return null
 
-  const connectionBanner =
-    connectionStatus === 'reconnecting' ? (
-      <AlertBanner variant="warning" icon={<RefreshCcw className="h-4 w-4" />}>
-        Connection dropped. Attempting to reconnect…
-      </AlertBanner>
-    ) : connectionStatus === 'lost' ? (
-      <AlertBanner
-        variant="error"
-        icon={<WifiOff className="h-4 w-4" />}
-        actionLabel="Return"
-        onAction={() => {
-          cancelMatch()
-          navigate('/lobby')
-        }}
-      >
-        We couldn’t reconnect to this match. Return to the lobby to re-queue.
-      </AlertBanner>
-    ) : null
-
   return (
     <div className="relative min-h-screen bg-pp-bg px-4 py-6 text-white">
       <div className="mx-auto flex max-w-xl flex-col gap-4">
-        {connectionBanner}
         <h1 className="text-center text-2xl font-semibold">Match #{match.id.slice(-4).toUpperCase()}</h1>
         <GameTable
           match={match}

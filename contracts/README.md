@@ -9,9 +9,8 @@ npm install               # install tooling
 npm run compile           # hardhat compile + typechain
 npm test                  # solidity unit tests via hardhat
 npm run deploy:local      # deploy to localhost hardhat node
-npm run deploy:alfajores  # deploy to Celo Alfajores (Forno)
 npm run deploy:celo       # deploy to Celo Mainnet (only after audits!)
-npm run deploy:celo-sepolia # deploy to Celo Sepolia testnet
+npm run deploy:celo-sepolia # deploy to Celo Sepolia testnet (current public testnet)
 ```
 
 The Hardhat config mirrors the [Celo Composer](https://github.com/celo-org/celo-composer) defaults so all official networks (mainnet, Alfajores, Celo-Sepolia) are available out of the box. Use whichever target matches your MiniPay rollout plan.
@@ -28,7 +27,6 @@ The Hardhat config mirrors the [Celo Composer](https://github.com/celo-org/celo-
 Copy `.env.example` to `.env` and fill in:
 
 ```
-CELO_ALFAJORES_RPC_URL=https://alfajores-forno.celo-testnet.org
 CELO_MAINNET_RPC_URL=https://forno.celo.org
 CELO_SEPOLIA_RPC_URL=https://forno.celo-sepolia.celo-testnet.org
 PRIVATE_KEY=0x...
