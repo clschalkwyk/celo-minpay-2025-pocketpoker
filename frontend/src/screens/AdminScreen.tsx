@@ -3,6 +3,7 @@ import { Shield, CheckCircle2 } from 'lucide-react'
 import type { AdminStats, CreatorDeckSubmission, DeckPurchase } from '../types'
 import { Api } from '../lib/api'
 import { PrimaryButton } from '../components/ui/PrimaryButton'
+import { SecondaryButton } from '../components/ui/SecondaryButton'
 
 const defaultKey = import.meta.env.VITE_ADMIN_KEY
 
@@ -19,6 +20,7 @@ type AdminAction =
   | { type: 'error'; error: string }
   | { type: 'success'; payload: { submissions: CreatorDeckSubmission[]; purchases: DeckPurchase[]; stats: AdminStats } }
   | { type: 'updateSubmission'; payload: CreatorDeckSubmission }
+  | { type: 'reset' }
 
 const initialState: AdminDataState = { submissions: [], purchases: [], loading: false }
 
@@ -40,6 +42,8 @@ const adminReducer = (state: AdminDataState, action: AdminAction): AdminDataStat
         ...state,
         submissions: state.submissions.map((submission) => (submission.id === action.payload.id ? action.payload : submission)),
       }
+    case 'reset':
+      return initialState
     default:
       return state
   }
@@ -87,6 +91,13 @@ export const AdminScreen = () => {
     }
   }
 
+  const handleLogout = () => {
+    setAdminKey('')
+    setPendingKey('')
+    localStorage.removeItem('pp_admin_key')
+    dispatch({ type: 'reset' })
+  }
+
   const handleSubmissionAction = async (id: string, updates: { status?: 'pending' | 'approved' | 'rejected'; nsfwFlag?: boolean; reviewNotes?: string }) => {
     if (!adminKey) return
     try {
@@ -132,10 +143,13 @@ export const AdminScreen = () => {
             <p className="text-xs uppercase tracking-[0.5em] text-gray-400">Marketplace</p>
             <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-300">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-300">
             <span>Pending: {stats?.submissions.pending ?? '—'}</span>
             <span>Approved: {stats?.submissions.approved ?? '—'}</span>
             <span>Sales: R{formatCurrency(stats?.sales.totalSales)}</span>
+            <SecondaryButton onClick={handleLogout} className="px-4 py-1 text-xs">
+              Logout
+            </SecondaryButton>
           </div>
         </header>
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -191,36 +205,47 @@ export const AdminScreen = () => {
                       <p className="text-xs uppercase tracking-[0.3em] text-pp-highlight">By {submission.creatorName}</p>
                       <p className="text-sm text-gray-300">{submission.description}</p>
                       {submission.reviewNotes && <p className="text-xs text-gray-400">Note: {submission.reviewNotes}</p>}
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="rounded-full border border-pp-primary px-4 py-2 text-xs text-pp-primary"
-                          onClick={() => handleSubmissionAction(submission.id, { status: 'approved' })}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-full border border-amber-400/60 px-4 py-2 text-xs text-amber-200"
-                          onClick={() => handleSubmissionAction(submission.id, { status: 'pending' })}
-                        >
-                          Reset
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-full border border-red-400/60 px-4 py-2 text-xs text-red-200"
-                          onClick={() => handleSubmissionAction(submission.id, { status: 'rejected' })}
-                        >
-                          Reject
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-full border border-white/20 px-4 py-2 text-xs text-white/80"
-                          onClick={() => handleSubmissionAction(submission.id, { nsfwFlag: !submission.nsfwFlag })}
-                        >
-                          {submission.nsfwFlag ? 'Unflag' : 'Flag NSFW'}
-                        </button>
-                      </div>
+                      <form
+                        className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-3"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          const data = new FormData(event.currentTarget)
+                          const status = data.get('status') as 'pending' | 'approved' | 'rejected'
+                          const nsfwFlag = data.get('nsfw') === 'on'
+                          const reviewNotes = (data.get('reviewNotes') as string).trim()
+                          void handleSubmissionAction(submission.id, {
+                            status,
+                            nsfwFlag,
+                            reviewNotes: reviewNotes || undefined,
+                          })
+                        }}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            name="status"
+                            defaultValue={submission.status}
+                            className="rounded-full border border-white/20 bg-black/40 px-3 py-2 text-xs text-white"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approve</option>
+                            <option value="rejected">Reject</option>
+                          </select>
+                          <label className="flex items-center gap-2 text-xs text-gray-300">
+                            <input type="checkbox" name="nsfw" defaultChecked={submission.nsfwFlag} />
+                            Flag NSFW
+                          </label>
+                        </div>
+                        <textarea
+                          name="reviewNotes"
+                          defaultValue={submission.reviewNotes ?? ''}
+                          placeholder="Review notes (optional)"
+                          className="w-full rounded-2xl border border-white/20 bg-black/30 px-3 py-2 text-xs text-white"
+                          rows={2}
+                        />
+                        <PrimaryButton type="submit" className="w-full px-4 py-2 text-xs">
+                          Save
+                        </PrimaryButton>
+                      </form>
                     </div>
                   </div>
                 ))}

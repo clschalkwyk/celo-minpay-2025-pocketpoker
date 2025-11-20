@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef } from 'react'
 import type { MatchState } from '../../types'
 import { CardRow } from './CardRow'
 import { PotDisplay } from './PotDisplay'
+import { useAmbience } from '../../hooks/useSound'
 
 const revealDelayMs = Number(import.meta.env.VITE_CARD_REVEAL_MS ?? 10000)
 
@@ -53,6 +54,7 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
   const latestResultRef = useRef(match.result)
   const youWin = match.result?.winner === 'you'
   const oppWin = match.result?.winner === 'opponent'
+  const { playCardSwipe, playAmbiance, stopAmbiance } = useAmbience()
 
   useEffect(() => {
     latestResultRef.current = match.result
@@ -63,7 +65,12 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
     window.clearInterval(countdownIntervalRef.current)
     window.clearTimeout(revealTimeoutRef.current)
     revealNotifiedRef.current = false
-  }, [match.id])
+    playCardSwipe()
+    playAmbiance()
+    return () => {
+      stopAmbiance()
+    }
+  }, [match.id, playCardSwipe, playAmbiance, stopAmbiance])
 
   useEffect(() => {
     if (match.result && !match.opponent.ready) {

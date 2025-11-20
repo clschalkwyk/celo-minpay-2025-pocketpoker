@@ -9,8 +9,8 @@ describe('profile routes', () => {
     app = await buildServer()
   })
 
-  beforeEach(() => {
-    store.reset()
+  beforeEach(async () => {
+    await store.reset()
   })
 
   afterAll(async () => {
@@ -19,7 +19,7 @@ describe('profile routes', () => {
 
   it('prevents profile updates before five matches', async () => {
     const walletAddress = '0xPROFILE_LOCKED'
-    store.getOrCreateProfile(walletAddress)
+    await store.getOrCreateProfile(walletAddress)
     const res = await app.inject({
       method: 'POST',
       url: '/profile/update',
@@ -30,9 +30,9 @@ describe('profile routes', () => {
 
   it('updates username and avatar after unlock threshold', async () => {
     const walletAddress = '0xPROFILE_OPEN'
-    const profile = store.getOrCreateProfile(walletAddress)
+    const profile = await store.getOrCreateProfile(walletAddress)
     profile.stats.matches = 6
-    store.updateProfile(profile)
+    await store.updateProfile(profile)
     const res = await app.inject({
       method: 'POST',
       url: '/profile/update',

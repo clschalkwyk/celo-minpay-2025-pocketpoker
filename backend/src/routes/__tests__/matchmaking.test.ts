@@ -9,8 +9,8 @@ describe('matchmaking routes', () => {
     app = await buildServer()
   })
 
-  beforeEach(() => {
-    store.reset()
+  beforeEach(async () => {
+    await store.reset()
   })
 
   afterAll(async () => {

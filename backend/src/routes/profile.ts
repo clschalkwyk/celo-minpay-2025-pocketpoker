@@ -23,7 +23,7 @@ export async function registerProfileRoutes(app: FastifyInstance) {
     if (!body?.walletAddress) {
       return reply.status(400).send({ error: 'walletAddress is required' })
     }
-    const profile = store.getOrCreateProfile(body.walletAddress)
+    const profile = await store.getOrCreateProfile(body.walletAddress)
     if (profile.stats.matches < MATCHES_REQUIRED_FOR_CUSTOMIZATION) {
       return reply.status(403).send({ error: `Play ${MATCHES_REQUIRED_FOR_CUSTOMIZATION} matches to unlock profile edits.` })
     }
@@ -51,7 +51,7 @@ export async function registerProfileRoutes(app: FastifyInstance) {
       updated.avatarUrl = trimmed
     }
 
-    store.updateProfile(updated)
+    await store.updateProfile(updated)
     return { profile: updated }
   })
 }

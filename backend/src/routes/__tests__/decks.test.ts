@@ -9,8 +9,8 @@ describe('deck routes', () => {
     app = await buildServer()
   })
 
-  beforeEach(() => {
-    store.reset()
+  beforeEach(async () => {
+    await store.reset()
   })
 
   afterAll(async () => {
@@ -20,7 +20,7 @@ describe('deck routes', () => {
   it('unlocks a deck for a profile', async () => {
     const walletAddress = '0xDECK'
     await app.inject({ method: 'POST', url: '/auth/init', payload: { walletAddress } })
-    store.reset()
+    await store.reset()
     const res = await app.inject({
       method: 'POST',
       url: '/decks/unlock',
@@ -32,7 +32,7 @@ describe('deck routes', () => {
 
   it('equips an unlocked deck', async () => {
     const walletAddress = '0xDECK2'
-    store.getOrCreateProfile(walletAddress)
+    await store.getOrCreateProfile(walletAddress)
     const res = await app.inject({
       method: 'POST',
       url: '/decks/equip',

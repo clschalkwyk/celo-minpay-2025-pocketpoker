@@ -15,15 +15,15 @@ export async function registerMatchRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'walletAddress and stake are required' })
     }
     try {
-      store.spendCredits(body.walletAddress, body.stake)
+      await store.spendCredits(body.walletAddress, body.stake)
     } catch (err) {
       return reply.status(400).send({ error: (err as Error).message })
     }
-    const result = app.matchmaking.queuePlayer(body.walletAddress, body.stake, {
+    const result = await app.matchmaking.queuePlayer(body.walletAddress, body.stake, {
       botOpponent: body.botOpponent,
     })
     if (result.status === 'queued') {
-      store.reserveCreditHold(result.ticketId, body.walletAddress, body.stake)
+      await store.reserveCreditHold(result.ticketId, body.walletAddress, body.stake)
     }
     return result
   })
@@ -33,13 +33,13 @@ export async function registerMatchRoutes(app: FastifyInstance) {
     if (!body?.walletAddress) {
       return reply.status(400).send({ error: 'walletAddress is required' })
     }
-    const removed = app.matchmaking.cancelQueue(body.walletAddress)
+    const removed = await app.matchmaking.cancelQueue(body.walletAddress)
     return { cancelled: removed }
   })
 
   app.get('/match/:id', async (request, reply) => {
     const params = request.params as { id: string }
-    const match = store.getMatch(params.id)
+    const match = await store.getMatch(params.id)
     if (!match) return reply.status(404).send({ error: 'Match not found' })
     return { match }
   })

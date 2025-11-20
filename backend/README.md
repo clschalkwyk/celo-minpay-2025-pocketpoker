@@ -31,7 +31,11 @@ Connect to `/ws/:matchId` to receive:
 
 ## Environment
 
-Set `PORT` (defaults to `4000`). Mission/deck/leaderboard data and matches are currently stored in memory. Replace the `DataStore` with Prisma/SQLite or another persistence layer when ready.
+Set `PORT` (defaults to `4000`). Mission/deck/leaderboard data and matches are currently stored in memory. Replace the `DataStore` with Prisma/SQLite or another persistence layer when ready. For cloud deployments, consider:
+
+- `USE_DYNAMO_STORE=true` and `DYNAMO_TABLE_NAME=<table>` to enable the DynamoDB implementation. You can apply the recommended Lambda env vars via `aws lambda update-function-configuration --cli-input-json file://backend/env.template.json`.
+- `ADMIN_API_KEY=<secret>` to secure `/admin/*` routes (defaults to `admin-demo-key`).
+- `ASSET_UPLOAD_BUCKET` / `ASSET_UPLOAD_REGION` / `ASSET_PUBLIC_BASE_URL` for S3 deck art uploads (see **Asset Uploads** below).
 
 ## AWS Lambda Deployment
 
@@ -43,3 +47,29 @@ export { handler }
 ```
 
 The handler lazily boots the Fastify instance from `src/server.ts` so cold starts stay low while keeping the regular `npm start` workflow untouched.
+
+## Asset Uploads
+
+To support custom deck artwork uploads, the backend can mint short-lived S3 pre-signed URLs via `POST /uploads/decks`. Configure the following environment variables (IAM credentials/roles must have `s3:PutObject` on the bucket):
+
+- `ASSET_UPLOAD_BUCKET` – target bucket name (required)
+- `ASSET_UPLOAD_REGION` – bucket region (falls back to `AWS_REGION`)
+- `ASSET_PUBLIC_BASE_URL` – optional CDN/public URL prefix; defaults to the S3 bucket URL
+
+Request body:
+
+```json
+{ "contentType": "image/png" }
+```
+
+Response:
+
+```json
+{
+  "uploadUrl": "https://s3....",
+  "fileUrl": "https://cdn.example.com/creator-decks/abc123.png",
+  "key": "creator-decks/abc123.png"
+}
+```
+
+The frontend can upload directly to `uploadUrl` and persist `fileUrl` inside `previewImageUrl` when submitting a deck.

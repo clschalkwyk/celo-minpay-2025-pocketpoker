@@ -7,7 +7,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if (!body?.walletAddress) {
       return reply.status(400).send({ error: 'walletAddress is required' })
     }
-    const profile = store.getOrCreateProfile(body.walletAddress)
+    const profile = await store.getOrCreateProfile(body.walletAddress)
     return { profile }
   })
 }

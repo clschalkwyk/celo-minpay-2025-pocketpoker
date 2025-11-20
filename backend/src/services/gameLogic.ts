@@ -70,7 +70,7 @@ const pairScore = (cards: Card[]) => {
   return (rankValue[pairRank] ?? 0) * 2 + (rankValue[kickerRank] ?? 0) / 10
 }
 
-export const resolveMatch = (match: Match) => {
+export const resolveMatch = async (match: Match) => {
   const playerCards = match.playerA.cards.length ? match.playerA.cards : dealHand()
   const opponentCards = match.playerB?.cards?.length ? match.playerB.cards : dealHand()
   match.playerA.cards = playerCards
@@ -92,15 +92,15 @@ export const resolveMatch = (match: Match) => {
   match.state = 'finished'
   match.winner = winnerWallet
   match.resultSummary = summary
-  store.saveMatch(match)
-  updateProfilesAfterMatch(match)
+  await store.saveMatch(match)
+  await updateProfilesAfterMatch(match)
   return match
 }
 
-const updateProfilesAfterMatch = (match: Match) => {
+const updateProfilesAfterMatch = async (match: Match) => {
   const winnerWallet = match.winner
-  const playerA = store.getOrCreateProfile(match.playerA.walletAddress)
-  const playerB = match.playerB ? store.getOrCreateProfile(match.playerB.walletAddress) : undefined
+  const playerA = await store.getOrCreateProfile(match.playerA.walletAddress)
+  const playerB = match.playerB ? await store.getOrCreateProfile(match.playerB.walletAddress) : undefined
   const participants = [playerA, playerB].filter(Boolean) as UserProfile[]
   for (const profile of participants) {
     const isWinner = winnerWallet === profile.walletAddress
@@ -124,20 +124,21 @@ const updateProfilesAfterMatch = (match: Match) => {
       profile.stats.wins += 1
       profile.stats.streak += 1
       if (match.stake > 0) {
-        store.adjustCredits(profile.walletAddress, match.stake * 2)
+        await store.adjustCredits(profile.walletAddress, match.stake * 2)
       }
     } else {
       profile.stats.losses += 1
       profile.stats.streak = 0
     }
-    store.updateProfile(profile)
+    await store.updateProfile(profile)
   }
 }
 
-export const createMatchWithCards = (stake: number, playerA: UserProfile, playerB: UserProfile) => {
-  const match = store.createMatch(stake, playerA, playerB)
+export const createMatchWithCards = async (stake: number, playerA: UserProfile, playerB: UserProfile) => {
+  const match = await store.createMatch(stake, playerA, playerB)
   match.playerA.cards = dealHand()
   if (match.playerB) match.playerB.cards = dealHand()
+  await store.saveMatch(match)
   return match
 }
 

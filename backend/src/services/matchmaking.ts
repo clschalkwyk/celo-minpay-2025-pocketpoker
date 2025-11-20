@@ -20,26 +20,26 @@ export class MatchmakingService extends EventEmitter {
     super()
   }
 
-  queuePlayer(walletAddress: WalletAddress, stake: number, options?: QueueOptions): QueueResult {
-    const player = store.getOrCreateProfile(walletAddress)
+  async queuePlayer(walletAddress: WalletAddress, stake: number, options?: QueueOptions): Promise<QueueResult> {
+    const player = await store.getOrCreateProfile(walletAddress)
 
     if (options?.botOpponent) {
       const bot = store.createBotProfile()
-      const match = createMatchWithCards(stake, player, bot)
+      const match = await createMatchWithCards(stake, player, bot)
       this.broadcast(match.id, { type: 'match_init', payload: match })
       this.scheduleResult(match)
       return { status: 'matched', match }
     }
 
     const ticketId = nanoid()
-    store.enqueue({ id: ticketId, stake, walletAddress, enqueuedAt: Date.now() })
-    const pair = store.dequeuePair(stake)
+    await store.enqueue({ id: ticketId, stake, walletAddress, enqueuedAt: Date.now() })
+    const pair = await store.dequeuePair(stake)
     if (!pair) return { status: 'queued', ticketId }
 
     const [a, b] = pair
-    const playerA = store.getOrCreateProfile(a.walletAddress)
-    const playerB = store.getOrCreateProfile(b.walletAddress)
-    const match = createMatchWithCards(stake, playerA, playerB)
+    const playerA = await store.getOrCreateProfile(a.walletAddress)
+    const playerB = await store.getOrCreateProfile(b.walletAddress)
+    const match = await createMatchWithCards(stake, playerA, playerB)
     this.broadcast(match.id, { type: 'match_init', payload: match })
     this.scheduleResult(match)
     return { status: 'matched', match }
@@ -60,8 +60,14 @@ export class MatchmakingService extends EventEmitter {
       }
     })
 
-    const existing = store.getMatch(matchId)
-    if (existing) socket.send(JSON.stringify({ type: 'state_update', payload: existing }))
+    void store
+      .getMatch(matchId)
+      .then((existing) => {
+        if (existing) socket.send(JSON.stringify({ type: 'state_update', payload: existing }))
+      })
+      .catch((err) => {
+        this.app.log.error({ err }, 'failed to fetch match for websocket')
+      })
   }
 
   private broadcast(matchId: string, event: MatchmakingEvent) {
@@ -87,8 +93,13 @@ export class MatchmakingService extends EventEmitter {
     timers.push(readyTimer)
 
     const resultTimer = setTimeout(() => {
-      const resolved = resolveMatch(match)
-      this.broadcast(match.id, { type: 'result', payload: resolved })
+      void resolveMatch(match)
+        .then((resolved) => {
+          this.broadcast(match.id, { type: 'result', payload: resolved })
+        })
+        .catch((err) => {
+          this.app.log.error({ err }, 'failed to resolve match')
+        })
     }, 2500)
     timers.push(resultTimer)
     this.timeouts.set(match.id, timers)

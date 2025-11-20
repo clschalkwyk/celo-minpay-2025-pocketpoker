@@ -1,0 +1,90 @@
+import type { CreatorDeckSubmission, DeckTheme } from '../types.js'
+
+export const DEMO_DECK_PRICE = 0.1
+
+export const sampleDecks: DeckTheme[] = [
+  {
+    id: 'deck-midnight',
+    name: 'Midnight Noir',
+    rarity: 'rare',
+    description: 'Black on black with gold glyphs for grinders.',
+    previewImageUrl: '/deck_1.jpg',
+    unlockCondition: 'Reach Level 5',
+    status: 'live',
+    price: DEMO_DECK_PRICE,
+  },
+  {
+    id: 'deck-ndebele',
+    name: 'Ndebele Geometry',
+    rarity: 'legendary',
+    description: 'Warm geometric lines inspired by South African art.',
+    previewImageUrl: '/deck_3.jpg',
+    unlockCondition: 'Complete 10 missions',
+    status: 'live',
+    price: DEMO_DECK_PRICE,
+  },
+  {
+    id: 'deck-cyber',
+    name: 'Celo Cybermint',
+    rarity: 'ranked',
+    description: 'Mint gradient meets neon grids.',
+    previewImageUrl: '/deck_4.jpg',
+    unlockCondition: 'Win 5 ranked matches',
+    status: 'live',
+    price: DEMO_DECK_PRICE,
+  },
+  {
+    id: 'deck-sunrise',
+    name: 'Sunrise Mirage',
+    rarity: 'rare',
+    description: 'Heat-wave gradients with pearlescent corner flourishes.',
+    previewImageUrl: '/deck_6.png',
+    unlockCondition: 'Log in 3 days in a row',
+    status: 'live',
+    price: DEMO_DECK_PRICE,
+  },
+  {
+    id: 'deck-holofoil',
+    name: 'Holofoil Flux',
+    rarity: 'legendary',
+    description: 'Prismatic foil finish with animated light streaks.',
+    previewImageUrl: '/deck_2.png',
+    unlockCondition: 'Creator spotlight reward',
+    status: 'live',
+    price: DEMO_DECK_PRICE,
+  },
+  {
+    id: 'deck-creator',
+    name: 'Creator Skin',
+    rarity: 'legendary',
+    description: 'Custom PC deck art.',
+    previewImageUrl: '/deck_5.jpg',
+    unlockCondition: 'Creator drop',
+    creatorName: 'Pocket Creator',
+    status: 'live_soon',
+    price: DEMO_DECK_PRICE,
+  },
+]
+
+export const seededCreatorDecks: CreatorDeckSubmission[] = [
+  {
+    id: 'creator-sub-1',
+    deckName: 'Joburg Neon Cascade',
+    creatorName: 'Studio Zazi',
+    rarity: 'legendary',
+    description: 'Electric lines inspired by Johannesburg nightlife.',
+    previewImageUrl: '/deck_6.jpg',
+    status: 'pending',
+    submittedAt: Date.now() - 1000 * 60 * 60 * 5,
+  },
+  {
+    id: 'creator-sub-2',
+    deckName: 'Ubuntu Bloom',
+    creatorName: 'Aya Creative',
+    rarity: 'rare',
+    description: 'Beaded florals celebrating community potluck nights.',
+    previewImageUrl: '/deck_7.jpg',
+    status: 'approved',
+    submittedAt: Date.now() - 1000 * 60 * 60 * 24,
+  },
+]

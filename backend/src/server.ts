@@ -9,6 +9,7 @@ import { registerMetaRoutes } from './routes/meta.js'
 import { registerMatchRoutes } from './routes/match.js'
 import { registerProfileRoutes } from './routes/profile.js'
 import { MatchmakingService } from './services/matchmaking.js'
+import { registerUploadRoutes } from './routes/uploads.js'
 
 // Define the root plugin
 async function appPlugin(app: FastifyInstance) {
@@ -20,6 +21,7 @@ async function appPlugin(app: FastifyInstance) {
   await app.register(registerMetaRoutes)
   await app.register(registerMatchRoutes)
   await app.register(registerProfileRoutes)
+  await app.register(registerUploadRoutes)
 
   // WebSocket registration
   app.register(async (instance) => {
