@@ -15,7 +15,7 @@ type ProfileContextValue = {
   profile?: UserProfile
   loading: boolean
   refreshProfile: () => Promise<void>
-  applyMatchResult: (result: 'you' | 'opponent') => number
+  applyMatchResult: (result: 'you' | 'opponent', stake?: number) => number
   equipDeck: (deckId: string) => void
   grantXp: (amount: number) => void
 }
@@ -63,7 +63,7 @@ export const ProfileProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
-  const applyMatchResult = useCallback((result: 'you' | 'opponent') => {
+  const applyMatchResult = useCallback((result: 'you' | 'opponent', stake?: number) => {
     let xpAwarded = 0
     setProfile((prev) => {
       if (!prev) return prev
@@ -74,6 +74,7 @@ export const ProfileProvider = ({ children }: { children: ReactNode }) => {
       const { xp, level, xpToNextLevel } = calcXpProgress(prev, xpDelta)
       return {
         ...prev,
+        credits: win && stake ? prev.credits + stake * 2 : prev.credits,
         xp,
         level,
         xpToNextLevel,

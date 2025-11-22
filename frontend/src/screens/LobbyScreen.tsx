@@ -9,6 +9,7 @@ import { useMiniPay } from '../hooks/useMiniPay'
 import { useUIStore } from '../hooks/useUIStore'
 import { useMatch } from '../hooks/useMatch'
 import { stakeTiers } from '../lib/mockData'
+import { convertZarToCelo, CELO_TO_ZAR_RATE, formatCelo } from '../lib/currency'
 import { WalletCards, Flag, Trophy, BookOpenCheck, UserRound, AlertTriangle } from 'lucide-react'
 import type { MatchQueueStatus } from '../providers/MatchProvider'
 import { AlertBanner } from '../components/ui/AlertBanner'
@@ -17,7 +18,7 @@ export const LobbyScreen = () => {
   const navigate = useNavigate()
   const { profile, loading } = useProfile()
   const { balance, refreshBalance, status: miniPayStatus, error: miniPayError, connect } = useMiniPay()
-  const { selectedStake, setSelectedStake } = useUIStore()
+  const { selectedStake, setSelectedStake, realMoneyMode } = useUIStore()
   const { queueForMatch, queueStatus } = useMatch()
 
   const miniPayReady = miniPayStatus === 'ready'
@@ -49,7 +50,9 @@ export const LobbyScreen = () => {
           username={profile.username}
           rankTitle={profile.rankTitle}
           balanceLabel={`MiniPay R${balance.toFixed(2)}`}
-          creditsLabel={`Credits R${profile.credits.toFixed(2)}`}
+          creditsLabel={
+            realMoneyMode ? 'Demo credits paused' : `Credits R${profile.credits.toFixed(2)}`
+          }
           onRefreshBalance={refreshBalance}
         />
 
@@ -74,7 +77,18 @@ export const LobbyScreen = () => {
           </div>
           <div className="mt-4">
             <StakeSelector stakes={stakeTiers} value={selectedStake} onChange={setSelectedStake} />
-            <p className="mt-2 text-xs text-gray-400">Using demo credits. Balance: R{profile.credits.toFixed(2)}</p>
+            <p className="mt-2 text-xs text-gray-400">
+              {realMoneyMode ? (
+                <>
+                  Using real cUSD via MiniPay. Demo credits stay unchanged.
+                  <br />
+                  On-chain stake: {formatCelo(convertZarToCelo(selectedStake))} CELO (1 CELO ≈ R
+                  {CELO_TO_ZAR_RATE.toLocaleString()})
+                </>
+              ) : (
+                <>Using demo credits. Balance: R{profile.credits.toFixed(2)}</>
+              )}
+            </p>
           </div>
           <PrimaryButton className="mt-5" onClick={handlePlay} disabled={playDisabled}>
             {miniPayReady ? 'Play now' : 'Open in MiniPay'}
@@ -115,8 +129,15 @@ const statusCopy: Record<MatchQueueStatus, string> = {
 const QueueStatusBanner = ({ status }: { status: MatchQueueStatus }) => {
   if (status === 'idle') return null
   return (
-    <div className="glass-panel mt-2 rounded-2xl border-white/10 bg-white/5 p-3 text-xs text-gray-200">
-      Queue status: {statusCopy[status]}
+    <div className="mt-3 rounded-2xl border border-pp-secondary/40 bg-gradient-to-br from-white/10 to-black/40 px-4 py-3 text-sm font-semibold text-gray-100 shadow-[0_12px_30px_rgba(139,92,246,0.25)]">
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-[0.45em] text-pp-secondary/70">Queue status</p>
+        <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.45em] text-white">
+          <span className="h-2 w-2 rounded-full bg-pp-primary/90 shadow-[0_0_12px_rgba(53,208,127,0.45)] pulse-ring"></span>
+          {status}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-gray-300">{statusCopy[status]}</p>
     </div>
   )
 }

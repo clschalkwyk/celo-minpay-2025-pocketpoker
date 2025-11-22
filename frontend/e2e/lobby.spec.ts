@@ -57,7 +57,7 @@ test.describe('PocketPoker lobby', () => {
     await page.route('**/decks', (route) => route.fulfill({ json: decksResponse }))
     await page.route('**/missions', (route) => route.fulfill({ json: missionsResponse }))
     await page.route('**/leaderboard', (route) => route.fulfill({ json: leaderboardResponse }))
-    await page.route('**/match/queue', (route) =>
+    await page.route('**/match/queue-demo', (route) =>
       route.fulfill({ json: { status: 'matched', match: { ...mockMatch } } }),
     )
   })

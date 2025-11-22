@@ -23,6 +23,7 @@ export interface DataStore {
   submitCreatorDeck(payload: {
     deckName: string
     creatorName: string
+    creatorWallet?: WalletAddress
     rarity: DeckTheme['rarity']
     description: string
     previewImageUrl: string
@@ -32,6 +33,7 @@ export interface DataStore {
   getLeaderboard(): LeaderboardEntry[]
   getOrCreateProfile(walletAddress: WalletAddress): Promise<UserProfile>
   updateProfile(profile: UserProfile): Promise<void>
+  resetProfile(walletAddress: WalletAddress): Promise<UserProfile>
   spendCredits(walletAddress: WalletAddress, amount: number): Promise<UserProfile>
   adjustCredits(walletAddress: WalletAddress, amount: number): Promise<UserProfile>
   getMissions(walletAddress: WalletAddress): Promise<Mission[]>
@@ -90,6 +92,10 @@ class MemoryStoreAdapter implements DataStore {
 
   async updateProfile(profile: UserProfile) {
     this.backing.updateProfile(profile)
+  }
+
+  resetProfile(walletAddress: WalletAddress) {
+    return Promise.resolve(this.backing.resetProfile(walletAddress))
   }
 
   spendCredits(walletAddress: WalletAddress, amount: number) {

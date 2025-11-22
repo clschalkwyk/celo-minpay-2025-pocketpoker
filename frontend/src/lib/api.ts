@@ -11,7 +11,16 @@ import type {
   UserProfile,
 } from '../types'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
+const resolveBackendUrl = () => {
+  const fromEnv = import.meta.env.VITE_BACKEND_URL
+  if (fromEnv) return fromEnv.replace(/\/$/, '')
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+  return 'http://localhost:4000'
+}
+
+const BACKEND_URL = resolveBackendUrl()
 
 const toJson = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
@@ -78,6 +87,11 @@ export const Api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  resetProfile: (walletAddress: string) =>
+    request<{ profile: UserProfile }>('/profile/reset', {
+      method: 'POST',
+      body: JSON.stringify({ walletAddress }),
+    }),
   unlockDeck: (payload: { walletAddress: string; deckId: string }) =>
     request<{ profile: UserProfile }>('/decks/unlock', {
       method: 'POST',
@@ -108,9 +122,13 @@ export const Api = {
   submitCreatorDeck: (payload: {
     deckName: string
     creatorName: string
+    creatorWallet: string
     rarity: DeckTheme['rarity']
     description: string
-    previewImageUrl: string
+    previewImageUrl?: string
+    imageData?: string
+    fileName?: string
+    contentType?: string
   }) =>
     request<{ submission: CreatorDeckSubmission }>('/creator-decks', {
       method: 'POST',
@@ -138,15 +156,20 @@ export const Api = {
     id: string,
     payload: { status?: 'pending' | 'approved' | 'rejected'; reviewNotes?: string; nsfwFlag?: boolean },
   ) =>
-    adminRequest<{ submission: CreatorDeckSubmission }>(`/creator-decks/${id}`, adminKey, {
-      method: 'PATCH',
+    adminRequest<{ submission: CreatorDeckSubmission }>(`/creator-decks/${id}/status`, adminKey, {
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
   fetchAdminPurchases: (adminKey: string) => adminRequest<{ purchases: DeckPurchase[] }>('/admin/purchases', adminKey),
   fetchAdminStats: (adminKey: string) => adminRequest<AdminStats>('/admin/stats', adminKey),
   fetchLeaderboard: () => request<{ leaderboard: LeaderboardEntry[] }>('/leaderboard'),
-  queueMatch: (payload: { walletAddress: string; stake: number; botOpponent?: boolean }) =>
-    request<QueueResponse>('/match/queue', {
+  queueDemoMatch: (payload: { walletAddress: string; stake: number; botOpponent?: boolean }) =>
+    request<QueueResponse>('/match/queue-demo', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  queueEscrowMatch: (payload: { walletAddress: string; stake: number; botOpponent?: boolean; txHash: string }) =>
+    request<QueueResponse>('/match/queue-escrow', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -158,22 +181,31 @@ export const Api = {
   getMatch: (id: string) => request<{ match: MatchPayload }>(`/match/${id}`),
 }
 
-export const mapMatchPayloadToState = (payload: MatchPayload): MatchState => ({
-  id: payload.id,
-  stake: payload.stake,
-  pot: payload.pot,
-  phase:
-    payload.phase ??
-    (payload.state === 'finished' || payload.resultSummary ? 'result' : 'active'),
-  you: toSeat(payload.playerA, true),
-  opponent: toSeat(payload.playerB, false),
-  result: payload.resultSummary
-    ? {
-        winner: payload.winner === payload.playerA.walletAddress ? 'you' : 'opponent',
-        summary: payload.resultSummary,
-      }
-    : undefined,
-})
+export const mapMatchPayloadToState = (payload: MatchPayload): MatchState => {
+  const you = toSeat(payload.playerA, true)
+  const opponent = toSeat(payload.playerB, false)
+  const hasWinner = Boolean(payload.winner)
+  const phase: MatchState['phase'] =
+    hasWinner || payload.state === 'finished' ? 'result' : payload.phase ?? 'active'
+  const winnerPerspective = hasWinner && payload.winner === payload.playerA.walletAddress ? 'you' : 'opponent'
+  const summaryFallback =
+    winnerPerspective === 'you' ? 'You cleaned them out.' : 'Tough beat. Shuffle again.'
+
+  return {
+    id: payload.id,
+    stake: payload.stake,
+    pot: payload.pot,
+    phase,
+    you,
+    opponent,
+    result: hasWinner
+      ? {
+          winner: winnerPerspective,
+          summary: payload.resultSummary ?? summaryFallback,
+        }
+      : undefined,
+  }
+}
 
 const toSeat = (player: ApiPlayer, isYou: boolean): PlayerSeat => ({
   id: player.playerId,

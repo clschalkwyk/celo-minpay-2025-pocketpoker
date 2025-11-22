@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useReducer, useState } from 'react'
+import clsx from 'clsx'
 import { Shield, CheckCircle2 } from 'lucide-react'
 import type { AdminStats, CreatorDeckSubmission, DeckPurchase } from '../types'
 import { Api } from '../lib/api'
@@ -20,6 +21,7 @@ type AdminAction =
   | { type: 'error'; error: string }
   | { type: 'success'; payload: { submissions: CreatorDeckSubmission[]; purchases: DeckPurchase[]; stats: AdminStats } }
   | { type: 'updateSubmission'; payload: CreatorDeckSubmission }
+  | { type: 'setSubmissions'; payload: CreatorDeckSubmission[] }
   | { type: 'reset' }
 
 const initialState: AdminDataState = { submissions: [], purchases: [], loading: false }
@@ -42,6 +44,11 @@ const adminReducer = (state: AdminDataState, action: AdminAction): AdminDataStat
         ...state,
         submissions: state.submissions.map((submission) => (submission.id === action.payload.id ? action.payload : submission)),
       }
+    case 'setSubmissions':
+      return {
+        ...state,
+        submissions: action.payload,
+      }
     case 'reset':
       return initialState
     default:
@@ -55,6 +62,7 @@ export const AdminScreen = () => {
   const [view, setView] = useState<'submissions' | 'sales'>('submissions')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
   const [state, dispatch] = useReducer(adminReducer, initialState)
+  const [formState, setFormState] = useState<Record<string, { status: 'pending' | 'approved' | 'rejected'; nsfwFlag: boolean; reviewNotes: string }>>({})
 
   const isAuthed = Boolean(adminKey)
   const { submissions, purchases, stats, loading, error } = state
@@ -98,14 +106,42 @@ export const AdminScreen = () => {
     dispatch({ type: 'reset' })
   }
 
+  const [savingId, setSavingId] = useState<string | null>(null)
+
   const handleSubmissionAction = async (id: string, updates: { status?: 'pending' | 'approved' | 'rejected'; nsfwFlag?: boolean; reviewNotes?: string }) => {
-    if (!adminKey) return
+    if (!adminKey) {
+      dispatch({ type: 'error', error: 'Admin key missing. Sign in again.' })
+      return
+    }
     try {
+      setSavingId(id)
       const res = await Api.updateSubmission(adminKey, id, updates)
-      dispatch({ type: 'updateSubmission', payload: res.submission })
+      const merged: CreatorDeckSubmission = {
+        ...res.submission,
+        status: updates.status ?? res.submission.status,
+        nsfwFlag: typeof updates.nsfwFlag === 'boolean' ? updates.nsfwFlag : res.submission.nsfwFlag,
+        reviewNotes: updates.reviewNotes ?? res.submission.reviewNotes,
+      }
+      // Update local list immediately
+      dispatch({ type: 'updateSubmission', payload: merged })
+      // If the item no longer matches the current filter (e.g., pending -> rejected), drop it from view
+      if (statusFilter !== 'all' && merged.status && merged.status !== statusFilter) {
+        dispatch({
+          type: 'setSubmissions',
+          payload: state.submissions.filter((s) => s.id !== merged.id),
+        })
+      }
+      dispatch({ type: 'error', error: undefined as unknown as string })
+      // Optional: refresh all to keep counts accurate without losing statuses
+      const refreshed = await Api.fetchAdminSubmissions(adminKey, undefined)
+      const filtered =
+        statusFilter === 'all' ? refreshed.submissions : refreshed.submissions.filter((s) => s.status === statusFilter)
+      dispatch({ type: 'setSubmissions', payload: filtered })
     } catch (err) {
       console.error(err)
-      dispatch({ type: 'error', error: (err as Error).message })
+      dispatch({ type: 'error', error: (err as Error).message || 'Failed to update submission' })
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -114,22 +150,26 @@ export const AdminScreen = () => {
   if (!isAuthed) {
     return (
       <div className="min-h-screen bg-pp-bg px-4 py-6 text-white">
-        <div className="mx-auto max-w-md space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
-          <div className="flex items-center gap-3">
-            <Shield className="h-5 w-5 text-pp-primary" />
-            <div>
-              <h1 className="text-2xl font-semibold">Admin Access</h1>
-              <p className="text-xs text-gray-400">Enter the admin key to view submissions and sales.</p>
+        <div className="mx-auto max-w-md">
+          <div className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-pp-surface/70 p-6 shadow-[0_25px_65px_rgba(5,8,22,0.75)]">
+            <div className="flex items-center gap-3">
+              <Shield className="h-5 w-5 text-pp-primary" />
+              <div>
+                <h1 className="text-2xl font-semibold">Admin Access</h1>
+                <p className="text-xs text-gray-400">Enter the admin key to manage submissions, sales, and stats.</p>
+              </div>
             </div>
+            <input
+              type="password"
+              value={pendingKey}
+              onChange={(event) => setPendingKey(event.target.value)}
+              className="mt-4 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-pp-primary focus:outline-none"
+              placeholder="Admin key"
+            />
+            <PrimaryButton className="mt-4 w-full" onClick={handleSaveKey}>
+              Sign in
+            </PrimaryButton>
           </div>
-          <input
-            type="password"
-            value={pendingKey}
-            onChange={(event) => setPendingKey(event.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-            placeholder="Admin key"
-          />
-          <PrimaryButton onClick={handleSaveKey}>Sign in</PrimaryButton>
         </div>
       </div>
     )
@@ -138,16 +178,16 @@ export const AdminScreen = () => {
   return (
     <div className="min-h-screen bg-pp-bg px-4 py-6 text-white">
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-4">
+        <header className="glass-panel flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-pp-surface/70 p-5 shadow-[0_25px_60px_rgba(5,8,22,0.75)]">
           <div>
             <p className="text-xs uppercase tracking-[0.5em] text-gray-400">Marketplace</p>
             <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-300">
+          <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.3em] text-gray-300">
             <span>Pending: {stats?.submissions.pending ?? '—'}</span>
             <span>Approved: {stats?.submissions.approved ?? '—'}</span>
             <span>Sales: R{formatCurrency(stats?.sales.totalSales)}</span>
-            <SecondaryButton onClick={handleLogout} className="px-4 py-1 text-xs">
+            <SecondaryButton onClick={handleLogout} className="px-4 py-1 text-[10px] uppercase tracking-[0.4em]">
               Logout
             </SecondaryButton>
           </div>
@@ -156,14 +196,24 @@ export const AdminScreen = () => {
         <div className="flex gap-2">
           <button
             type="button"
-            className={`rounded-full px-4 py-2 text-sm ${view === 'submissions' ? 'bg-pp-primary text-white' : 'bg-white/10 text-gray-300'}`}
+            className={clsx(
+              'rounded-full px-4 py-2 text-sm uppercase tracking-[0.3em] transition',
+              view === 'submissions'
+                ? 'bg-pp-primary text-white shadow-[0_8px_30px_rgba(53,208,127,0.45)]'
+                : 'bg-white/10 text-gray-300 hover:border hover:border-white/20',
+            )}
             onClick={() => setView('submissions')}
           >
             Submissions
           </button>
           <button
             type="button"
-            className={`rounded-full px-4 py-2 text-sm ${view === 'sales' ? 'bg-pp-primary text-white' : 'bg-white/10 text-gray-300'}`}
+            className={clsx(
+              'rounded-full px-4 py-2 text-sm uppercase tracking-[0.3em] transition',
+              view === 'sales'
+                ? 'bg-pp-primary text-white shadow-[0_8px_30px_rgba(53,208,127,0.45)]'
+                : 'bg-white/10 text-gray-300 hover:border hover:border-white/20',
+            )}
             onClick={() => setView('sales')}
           >
             Sales
@@ -175,7 +225,7 @@ export const AdminScreen = () => {
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-                className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                className="rounded-full border border-white/20 bg-black/40 px-4 py-2 text-sm text-white focus:border-pp-primary focus:outline-none"
               >
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
@@ -188,67 +238,110 @@ export const AdminScreen = () => {
               <p className="text-sm text-gray-400">No submissions found.</p>
             ) : (
               <div className="space-y-4">
-                {submissions.map((submission) => (
-                  <div key={submission.id} className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-4 md:flex-row">
-                    <img src={submission.previewImageUrl} alt={submission.deckName} className="h-40 w-full rounded-2xl object-cover md:w-48" />
-                    <div className="flex flex-1 flex-col gap-2">
+              {submissions.map((submission) => (
+                <div
+                  key={submission.id}
+                  className="relative flex flex-col gap-4 rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-pp-surface/70 p-4 shadow-[0_20px_60px_rgba(5,8,22,0.75)] md:flex-row"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-pp-primary/10 via-transparent to-pp-secondary/10 blur-3xl opacity-60" />
+                  <img
+                    src={submission.previewImageUrl}
+                    alt={submission.deckName}
+                    className="relative h-40 w-full rounded-2xl object-cover md:w-48"
+                  />
+                  <div className="relative flex flex-1 flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-semibold text-white">{submission.deckName}</h3>
+                      <span className="text-xs uppercase tracking-[0.3em] text-gray-400">{submission.rarity}</span>
+                      <span className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.3em] ${badgeClass(submission.status)}`}>
+                        {submission.status}
+                      </span>
+                      {submission.nsfwFlag && (
+                        <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-200">Flagged</span>
+                      )}
+                    </div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-pp-highlight">By {submission.creatorName}</p>
+                    <p className="text-sm text-gray-300">{submission.description}</p>
+                    {submission.reviewNotes && <p className="text-xs text-gray-400">Note: {submission.reviewNotes}</p>}
+                    <form
+                      className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-3"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        const draft = formState[submission.id]
+                        const status = draft?.status ?? submission.status ?? 'pending'
+                        const nsfwFlag = draft?.nsfwFlag ?? submission.nsfwFlag ?? false
+                        const note = draft?.reviewNotes ?? submission.reviewNotes ?? ''
+                        const reviewNotes = note.trim() || undefined
+                        void handleSubmissionAction(submission.id, {
+                          status,
+                          nsfwFlag,
+                          reviewNotes,
+                        })
+                      }}
+                    >
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-semibold text-white">{submission.deckName}</h3>
-                        <span className="text-xs uppercase tracking-[0.3em] text-gray-400">{submission.rarity}</span>
-                        <span className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.3em] ${badgeClass(submission.status)}`}>
-                          {submission.status}
-                        </span>
-                        {submission.nsfwFlag && (
-                          <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-200">Flagged</span>
-                        )}
-                      </div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-pp-highlight">By {submission.creatorName}</p>
-                      <p className="text-sm text-gray-300">{submission.description}</p>
-                      {submission.reviewNotes && <p className="text-xs text-gray-400">Note: {submission.reviewNotes}</p>}
-                      <form
-                        className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-3"
-                        onSubmit={(event) => {
-                          event.preventDefault()
-                          const data = new FormData(event.currentTarget)
-                          const status = data.get('status') as 'pending' | 'approved' | 'rejected'
-                          const nsfwFlag = data.get('nsfw') === 'on'
-                          const reviewNotes = (data.get('reviewNotes') as string).trim()
-                          void handleSubmissionAction(submission.id, {
-                            status,
-                            nsfwFlag,
-                            reviewNotes: reviewNotes || undefined,
-                          })
-                        }}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            name="status"
-                            defaultValue={submission.status}
-                            className="rounded-full border border-white/20 bg-black/40 px-3 py-2 text-xs text-white"
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="approved">Approve</option>
-                            <option value="rejected">Reject</option>
-                          </select>
+                        <select
+                          name="status"
+                          value={formState[submission.id]?.status ?? submission.status ?? 'pending'}
+                          onChange={(event) =>
+                            setFormState((prev) => ({
+                              ...prev,
+                              [submission.id]: {
+                                status: event.target.value as 'pending' | 'approved' | 'rejected',
+                                nsfwFlag: prev[submission.id]?.nsfwFlag ?? submission.nsfwFlag ?? false,
+                                reviewNotes: prev[submission.id]?.reviewNotes ?? submission.reviewNotes ?? '',
+                              },
+                            }))
+                          }
+                          className="rounded-full border border-white/20 bg-black/40 px-3 py-2 text-xs text-white"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approve</option>
+                          <option value="rejected">Reject</option>
+                        </select>
                           <label className="flex items-center gap-2 text-xs text-gray-300">
-                            <input type="checkbox" name="nsfw" defaultChecked={submission.nsfwFlag} />
+                            <input
+                              type="checkbox"
+                              name="nsfwFlag"
+                              checked={formState[submission.id]?.nsfwFlag ?? submission.nsfwFlag ?? false}
+                              onChange={(event) =>
+                                setFormState((prev) => ({
+                                  ...prev,
+                                  [submission.id]: {
+                                    status: prev[submission.id]?.status ?? submission.status ?? 'pending',
+                                    nsfwFlag: event.target.checked,
+                                    reviewNotes: prev[submission.id]?.reviewNotes ?? submission.reviewNotes ?? '',
+                                  },
+                                }))
+                              }
+                            />
                             Flag NSFW
                           </label>
-                        </div>
-                        <textarea
-                          name="reviewNotes"
-                          defaultValue={submission.reviewNotes ?? ''}
-                          placeholder="Review notes (optional)"
-                          className="w-full rounded-2xl border border-white/20 bg-black/30 px-3 py-2 text-xs text-white"
-                          rows={2}
-                        />
-                        <PrimaryButton type="submit" className="w-full px-4 py-2 text-xs">
-                          Save
-                        </PrimaryButton>
-                      </form>
-                    </div>
+                      </div>
+                      <textarea
+                        name="reviewNotes"
+                        value={formState[submission.id]?.reviewNotes ?? submission.reviewNotes ?? ''}
+                        onChange={(event) =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            [submission.id]: {
+                              status: prev[submission.id]?.status ?? submission.status ?? 'pending',
+                              nsfwFlag: prev[submission.id]?.nsfwFlag ?? submission.nsfwFlag ?? false,
+                              reviewNotes: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Review notes (optional)"
+                        className="w-full rounded-2xl border border-white/20 bg-black/30 px-3 py-2 text-xs text-white"
+                        rows={2}
+                      />
+                      <PrimaryButton type="submit" className="w-full px-4 py-2 text-xs" disabled={savingId === submission.id}>
+                        {savingId === submission.id ? 'Saving...' : 'Save'}
+                      </PrimaryButton>
+                    </form>
                   </div>
-                ))}
+                </div>
+              ))}
               </div>
             )}
           </section>

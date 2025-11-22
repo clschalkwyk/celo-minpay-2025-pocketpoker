@@ -23,7 +23,7 @@ Routing can be handled by React Router or similar.
 
 - Top‑level `<App>` component:
   - Provides theme + Tailwind classes.
-  - Holds global providers (e.g. query client, WebSocket, MiniPay context).
+  - Holds global providers (e.g. query client, MiniPay context, match polling store).
 - Optional `<ShellLayout>`:
   - Header and background styling shared across screens where appropriate.
 
@@ -32,7 +32,7 @@ Routing can be handled by React Router or similar.
 Suggested global contexts/hooks:
 - `useAuth()` / `useProfile()` – current `UserProfile`, loading states.
 - `useMiniPay()` – detects MiniPay provider, wallet address, balance.
-- `useMatch()` – current match info, WebSocket events, etc.
+- `useMatch()` – current match info, polling timers, etc.
 - `useUIStore()` – modal visibility, toasts, current stake selection.
 
 ---
@@ -128,13 +128,10 @@ Suggested global contexts/hooks:
 **Components:**
 - `<MatchmakingModal stake onCancel timeoutSeconds />`
 
-**Behavior:**
-- When opened:
-  - Calls `POST /match/queue` with `stake`.
-  - Subscribes to WebSocket for `match_found` event.
-- On `match_found`:
-  - Close modal.
-  - Navigate to `/match/:matchId`.
+- **Behavior:**
+- Calls `POST /match/queue-demo` (demo credits) or `POST /match/queue-escrow` (real stakes) with `stake`.
+- If response returns a match, close modal and navigate to `/match/:matchId`.
+- If response reports `queued`, keep modal visible, poll the queue status endpoint, and navigate once the backend responds with a match ID (MiniPay forbids WebSockets).
 - On timeout:
   - Display “Still searching…” and optionally auto‑cancel after extended timeout.
 - On cancel:
@@ -180,10 +177,9 @@ Suggested global contexts/hooks:
 - `REVEALING` – both sides flip; highlight winner.
 - `FINISHED` – transition to Result overlay.
 
-**WebSocket Events:**
-- `match_init` – initial state, includes cards and stake.
-- `state_update` – generic updates (ready flags, timer).
-- `result` – winner info, ELO changes, XP.
+- **Match Update Loop:**
+- `match_init` – initial state, includes cards and stake (returned by `POST /match/queue-demo` / `-escrow` when instantly matched).
+- Poll `GET /match/:id` for ready flags, timer, and results.
 
 **Client Events:**
 - `player_ready` – sent when user hits Ready (if not auto).
@@ -396,17 +392,17 @@ Suggested global contexts/hooks:
 ### 5.3 On Play Now
 
 - Open Matchmaking modal.
-- `POST /match/queue { stake }`.
-- Subscribe to WebSocket.
-- On `match_found`, navigate to `/match/:matchId`.
+- `POST /match/queue-demo { stake }` when demo credits are active OR `POST /match/queue-escrow { stake, txHash }` when real-money mode is toggled on.
+- If response is `matched`, navigate directly to `/match/:matchId`.
+- If response is `queued`, keep the modal open and periodically re-hit the queue status endpoint (MiniPay forbids WebSockets, so long-poll HTTP when implemented).
 
 ### 5.4 On Match Screen
 
-- Subscribe to `match/:id` WebSocket room.
-- Receive `match_init` with cards & stake.
+- Poll `GET /match/:id` on an interval for lifecycle updates.
+- First response includes cards & stake.
 - Display table UI.
 - On Ready (or auto), emit `player_ready`.
-- On `result`, open Result overlay.
+- Once `state=result`, open Result overlay.
 
 ### 5.5 On Result Actions
 

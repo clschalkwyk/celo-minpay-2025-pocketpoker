@@ -106,31 +106,41 @@ const updateProfilesAfterMatch = async (match: Match) => {
     const isWinner = winnerWallet === profile.walletAddress
     const xpGain = isWinner ? 200 : 100
     const eloDelta = isWinner ? 12 : -8
-    const newXp = profile.xp + xpGain
+    let workingProfile = profile
+    const creditsBefore = profile.credits
+    if (isWinner && match.stake > 0) {
+      const adjusted = await store.adjustCredits(profile.walletAddress, match.stake * 2)
+      workingProfile = adjusted
+      console.info('demo payout', {
+        walletAddress: profile.walletAddress,
+        stake: match.stake,
+        creditsBefore,
+        creditsAfter: adjusted.credits,
+      })
+    }
+
+    const newXp = workingProfile.xp + xpGain
     let xp = newXp
-    let level = profile.level
-    let xpToNext = profile.xpToNextLevel
+    let level = workingProfile.level
+    let xpToNext = workingProfile.xpToNextLevel
     while (xp >= xpToNext) {
       xp -= xpToNext
       level += 1
       xpToNext += 200
     }
-    profile.xp = xp
-    profile.level = level
-    profile.xpToNextLevel = xpToNext
-    profile.elo = Math.max(800, profile.elo + eloDelta)
-    profile.stats.matches += 1
+    workingProfile.xp = xp
+    workingProfile.level = level
+    workingProfile.xpToNextLevel = xpToNext
+    workingProfile.elo = Math.max(800, workingProfile.elo + eloDelta)
+    workingProfile.stats.matches += 1
     if (isWinner) {
-      profile.stats.wins += 1
-      profile.stats.streak += 1
-      if (match.stake > 0) {
-        await store.adjustCredits(profile.walletAddress, match.stake * 2)
-      }
+      workingProfile.stats.wins += 1
+      workingProfile.stats.streak += 1
     } else {
-      profile.stats.losses += 1
-      profile.stats.streak = 0
+      workingProfile.stats.losses += 1
+      workingProfile.stats.streak = 0
     }
-    await store.updateProfile(profile)
+    await store.updateProfile(workingProfile)
   }
 }
 

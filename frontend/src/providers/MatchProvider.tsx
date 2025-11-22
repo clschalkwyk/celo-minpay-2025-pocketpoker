@@ -13,7 +13,8 @@ import { useUIStore } from '../state/UIStoreProvider'
 import { useMiniPayContext } from './MiniPayProvider'
 import { useProfileContext } from './ProfileProvider'
 import { useMissionContext } from './MissionProvider'
-import { Api, mapMatchPayloadToState } from '../lib/api'
+import { Api, mapMatchPayloadToState, type QueueResponse } from '../lib/api'
+import { convertZarToCelo, formatCelo } from '../lib/currency'
 
 export type MatchQueueStatus = 'idle' | 'funding' | 'searching' | 'waiting' | 'timeout' | 'error'
 export type MatchConnectionStatus = 'idle' | 'polling'
@@ -22,7 +23,7 @@ type MatchContextValue = {
   match?: MatchState
   queueForMatch: (stake: number) => Promise<MatchState | undefined>
   cancelMatch: () => void
-  acknowledgeResult: () => void
+  acknowledgeResult: (winnerOverride?: 'you' | 'opponent') => void
   queueStatus: MatchQueueStatus
   connectionStatus: MatchConnectionStatus
 }
@@ -34,9 +35,9 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
   const [queueing, setQueueing] = useState(false)
   const [queueStatus, setQueueStatus] = useState<MatchQueueStatus>('idle')
   const [connectionStatus, setConnectionStatus] = useState<MatchConnectionStatus>('idle')
-  const { openMatchmaking, closeMatchmaking, pushToast } = useUIStore()
-  const { address } = useMiniPayContext()
-  const { applyMatchResult, refreshProfile } = useProfileContext()
+  const { openMatchmaking, closeMatchmaking, pushToast, realMoneyMode } = useUIStore()
+  const { address, sendStake, isMiniPay, celoBalance, refreshBalance } = useMiniPayContext()
+  const { applyMatchResult, refreshProfile, profile } = useProfileContext()
   const { recordMatchProgress } = useMissionContext()
   const queueTicketRef = useRef<string | undefined>(undefined)
   const queueTimeoutRef = useRef<number | undefined>(undefined)
@@ -61,13 +62,14 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       setQueueStatus('timeout')
       setQueueing(false)
       pushToast('No opponent found. Your credits were refunded.', 'info')
+      closeMatchmaking()
       if (address) {
         void Api.cancelQueue(address)
           .then(() => refreshProfile())
           .catch((err) => console.error('Failed to cancel queue', err))
       }
     }, matchTimeoutMs)
-  }, [address, clearQueueTimeout, matchTimeoutMs, pushToast, refreshProfile])
+  }, [address, clearQueueTimeout, matchTimeoutMs, pushToast, refreshProfile, closeMatchmaking])
 
   const resetQueueState = useCallback(() => {
     queueTicketRef.current = undefined
@@ -121,11 +123,53 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
         return undefined
       }
       if (queueing) return match
+      if (!realMoneyMode && profile) {
+        const availableCredits = profile.credits
+        if (availableCredits < stake) {
+          pushToast('Sorry, no funds to pay with.', 'error')
+          return match
+        }
+      }
       setQueueing(true)
       setQueueStatus('funding')
       openMatchmaking(stake)
       try {
-        const response = await Api.queueMatch({ walletAddress: address, stake, botOpponent: enableBotMatches })
+        let response: QueueResponse | undefined
+        if (realMoneyMode) {
+          const requiredCelo = convertZarToCelo(stake)
+          if (!isMiniPay) {
+            throw new Error('MiniPay must be connected to use real stakes.')
+          }
+          if (celoBalance < requiredCelo) {
+            pushToast(
+              `Sorry, no funds to pay with. Need ~${formatCelo(requiredCelo)} CELO`,
+              'error',
+            )
+            resetQueueState()
+            closeMatchmaking()
+            setQueueStatus('idle')
+            setQueueing(false)
+            return undefined
+          }
+          pushToast('Locking stake on-chain…', 'info')
+          const result = await sendStake(stake)
+          pushToast('Stake locked in escrow', 'success')
+          response = await Api.queueEscrowMatch({
+            walletAddress: address,
+            stake,
+            botOpponent: enableBotMatches,
+            txHash: result.txHash,
+          })
+        } else {
+          response = await Api.queueDemoMatch({
+            walletAddress: address,
+            stake,
+            botOpponent: enableBotMatches,
+          })
+        }
+        if (!response) {
+          return undefined
+        }
         void refreshProfile()
         if (response.status === 'matched') {
           const mapped = mapMatchPayloadToState(response.match)
@@ -167,6 +211,11 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       startMatchPolling,
       startQueueTimeout,
       refreshProfile,
+      realMoneyMode,
+      isMiniPay,
+      sendStake,
+      profile,
+      celoBalance,
     ],
   )
 
@@ -182,17 +231,24 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     closeMatchmaking()
   }, [address, closeMatchmaking, match, resetQueueState, refreshProfile, stopMatchPolling])
 
-  const acknowledgeResult = useCallback(() => {
-    if (match?.result) {
-      const xpEarned = applyMatchResult(match.result.winner)
-      recordMatchProgress({ xpEarned, matchesPlayed: 1 })
-      void refreshProfile()
-    }
-    stopMatchPolling()
-    resetQueueState()
-    setConnectionStatus('idle')
-    setMatch(undefined)
-  }, [match, applyMatchResult, refreshProfile, resetQueueState, recordMatchProgress, stopMatchPolling])
+  const acknowledgeResult = useCallback(
+    (winnerOverride?: 'you' | 'opponent') => {
+      const winner = winnerOverride ?? match?.result?.winner
+      if (winner) {
+        const xpEarned = applyMatchResult(winner, match?.stake)
+        recordMatchProgress({ xpEarned, matchesPlayed: 1 })
+        void refreshProfile()
+      }
+      stopMatchPolling()
+      resetQueueState()
+      setConnectionStatus('idle')
+      setMatch(undefined)
+      if (realMoneyMode) {
+        void refreshBalance()
+      }
+    },
+    [match, applyMatchResult, refreshProfile, resetQueueState, recordMatchProgress, stopMatchPolling, realMoneyMode, refreshBalance],
+  )
 
   useEffect(
     () => () => {

@@ -60,7 +60,7 @@ export const CardTile = ({ card, revealed = true, ready, isWinner, deckId }: Car
   return (
     <div
       className={clsx(
-        'relative h-24 w-16 overflow-hidden rounded-xl border text-center text-white shadow-lg transition-all duration-300',
+        'relative h-20 w-14 sm:h-24 sm:w-16 overflow-hidden rounded-xl border text-center text-white shadow-lg transition-all duration-300',
         ready ? 'animate-deal-card animate-card-pulse' : 'opacity-60',
         revealed ? 'animate-card-flip' : 'card-face-hidden',
         isWinner && 'scale-105',

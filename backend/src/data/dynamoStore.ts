@@ -1,4 +1,8 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import {
+  DynamoDBClient,
+  type BatchWriteItemCommandOutput as BatchWriteCommandOutput,
+  type WriteRequest,
+} from '@aws-sdk/client-dynamodb'
 import {
   BatchWriteCommand,
   DeleteCommand,
@@ -6,7 +10,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
-  UpdateCommand,
+  TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb'
 import { customAlphabet } from 'nanoid'
 import type {
@@ -120,6 +124,24 @@ const skQueueWallet = (stake: number, ticketId: string) => `TICKET#${stake}#${ti
 const pkCreditHold = (ticketId: string) => `CREDIT_HOLD#${ticketId}`
 const skCreditHold = 'DETAIL'
 
+const normalizeSubmission = (
+  submission: CreatorDeckSubmission,
+  overrides?: Partial<CreatorDeckSubmission>,
+): CreatorDeckSubmission => {
+  const status = overrides?.status ?? submission.status ?? 'pending'
+  const nsfwFlag = typeof overrides?.nsfwFlag === 'boolean' ? overrides.nsfwFlag : submission.nsfwFlag ?? false
+  const reviewNotes = overrides?.reviewNotes ?? submission.reviewNotes
+  const submittedAt = submission.submittedAt ?? Date.now()
+  return {
+    ...submission,
+    ...overrides,
+    status,
+    nsfwFlag,
+    reviewNotes,
+    submittedAt,
+  }
+}
+
 const ensureClient = () => {
   if (!tableName || !docClient) {
     throw new Error('DYNAMO_TABLE_NAME must be set to use DynamoStore')
@@ -150,6 +172,7 @@ export class DynamoStore {
           ExpressionAttributeValues: {
             ':pk': pkSubmissionFeed,
           },
+          ConsistentRead: true,
           ExclusiveStartKey: exclusiveStartKey,
           ScanIndexForward: false,
         }),
@@ -157,7 +180,7 @@ export class DynamoStore {
       const items = resp.Items ?? []
       for (const item of items) {
         if (!item.submission) continue
-        const submission = item.submission as CreatorDeckSubmission
+        const submission = normalizeSubmission(item.submission as CreatorDeckSubmission)
         if (status && submission.status !== status) continue
         results.push(submission)
       }
@@ -211,46 +234,51 @@ export class DynamoStore {
   async submitCreatorDeck(payload: {
     deckName: string
     creatorName: string
+    creatorWallet: WalletAddress
     rarity: DeckTheme['rarity']
     description: string
     previewImageUrl: string
   }) {
-    const submission: CreatorDeckSubmission = {
-      id: `creator-${nanoid()}`,
-      deckName: payload.deckName,
-      creatorName: payload.creatorName,
-      rarity: payload.rarity,
-      description: payload.description,
-      previewImageUrl: payload.previewImageUrl,
-      status: 'pending',
-      submittedAt: Date.now(),
-      nsfwFlag: false,
-    }
+    const submission: CreatorDeckSubmission = normalizeSubmission(
+      {
+        id: `creator-${nanoid()}`,
+        deckName: payload.deckName,
+        creatorName: payload.creatorName,
+        creatorWallet: payload.creatorWallet,
+        rarity: payload.rarity,
+        description: payload.description,
+        previewImageUrl: payload.previewImageUrl,
+        status: 'pending',
+        submittedAt: Date.now(),
+        nsfwFlag: false,
+      },
+      { status: 'pending', nsfwFlag: false },
+    )
 
     await this.client.send(
-      new BatchWriteCommand({
-        RequestItems: {
-          [tableName!]: [
-            {
-              PutRequest: {
-                Item: {
-                  PK: pkCreatorSubmission(submission.id),
-                  SK: skCreatorSubmission,
-                  submission,
-                },
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: tableName!,
+              Item: {
+                PK: pkCreatorSubmission(submission.id),
+                SK: skCreatorSubmission,
+                submission,
               },
             },
-            {
-              PutRequest: {
-                Item: {
-                  PK: pkSubmissionFeed,
-                  SK: skSubmissionFeed(submission.status, submission.submittedAt, submission.id),
-                  submission,
-                },
+          },
+          {
+            Put: {
+              TableName: tableName!,
+              Item: {
+                PK: pkSubmissionFeed,
+                SK: skSubmissionFeed(submission.status, submission.submittedAt, submission.id),
+                submission,
               },
             },
-          ],
-        },
+          },
+        ] as any,
       }),
     )
 
@@ -263,31 +291,62 @@ export class DynamoStore {
   ): Promise<CreatorDeckSubmission | undefined> {
     const existing = await this.getCreatorDeck(id)
     if (!existing) return undefined
-    const next: CreatorDeckSubmission = { ...existing, ...updates }
-    await this.client.send(
-      new BatchWriteCommand({
-        RequestItems: {
-          [tableName!]: [
-            {
-              PutRequest: {
-                Item: {
-                  PK: pkCreatorSubmission(id),
-                  SK: skCreatorSubmission,
-                  submission: next,
-                },
-              },
-            },
-            {
-              PutRequest: {
-                Item: {
-                  PK: pkSubmissionFeed,
-                  SK: skSubmissionFeed(next.status, next.submittedAt, next.id),
-                  submission: next,
-                },
-              },
-            },
-          ],
+    const enforcedStatus = updates.status ?? existing.status ?? 'pending'
+    const enforcedNsfw = typeof updates.nsfwFlag === 'boolean' ? updates.nsfwFlag : existing.nsfwFlag ?? false
+    const next: CreatorDeckSubmission = normalizeSubmission(existing, {
+      ...updates,
+      status: enforcedStatus,
+      nsfwFlag: enforcedNsfw,
+    })
+    const oldFeedSk = skSubmissionFeed(existing.status, existing.submittedAt, existing.id)
+    const newFeedSk = skSubmissionFeed(next.status, next.submittedAt, next.id)
+    const transactItems: Array<
+      | {
+          Put: {
+            TableName: string
+            Item: Record<string, unknown>
+          }
+        }
+      | {
+          Delete: {
+            TableName: string
+            Key: Record<string, unknown>
+          }
+        }
+    > = [
+      {
+        Put: {
+          TableName: tableName!,
+          Item: {
+            PK: pkCreatorSubmission(id),
+            SK: skCreatorSubmission,
+            submission: next,
+          },
         },
+      },
+      {
+        Put: {
+          TableName: tableName!,
+          Item: {
+            PK: pkSubmissionFeed,
+            SK: newFeedSk,
+            submission: next,
+          },
+        },
+      },
+    ]
+    if (oldFeedSk !== newFeedSk) {
+      transactItems.push({
+        Delete: {
+          TableName: tableName!,
+          Key: { PK: pkSubmissionFeed, SK: oldFeedSk },
+        },
+      })
+    }
+
+    await this.client.send(
+      new TransactWriteCommand({
+        TransactItems: transactItems as any,
       }),
     )
     return next
@@ -303,7 +362,8 @@ export class DynamoStore {
         },
       }),
     )
-    return (resp.Item?.submission as CreatorDeckSubmission | undefined) ?? undefined
+    const submission = resp.Item?.submission as CreatorDeckSubmission | undefined
+    return submission ? normalizeSubmission(submission) : undefined
   }
 
   async updateCreatorDeckStatus(id: string, status: CreatorDeckSubmission['status'], reviewNotes?: string) {
@@ -348,6 +408,27 @@ export class DynamoStore {
 
   updateProfile(profile: UserProfile) {
     return this.saveProfile(profile)
+  }
+
+  async resetProfile(walletAddress: WalletAddress): Promise<UserProfile> {
+    const existing = await this.getOrCreateProfile(walletAddress)
+    const reset: UserProfile = {
+      ...existing,
+      elo: 1500,
+      level: 1,
+      xp: 0,
+      xpToNextLevel: 200,
+      credits: 50,
+      stats: {
+        matches: 0,
+        wins: 0,
+        losses: 0,
+        streak: 0,
+      },
+    }
+    await this.saveProfile(reset)
+    await this.seedMissions(walletAddress)
+    return reset
   }
 
   async spendCredits(walletAddress: WalletAddress, amount: number) {
@@ -526,6 +607,23 @@ export class DynamoStore {
     return bot
   }
 
+  private async writeBatch(writes: WriteRequest[]) {
+    if (!writes.length) return
+    let unprocessed: Record<string, WriteRequest[]> | undefined = {
+      [tableName!]: writes,
+    }
+    let attempts = 0
+    while (unprocessed && Object.keys(unprocessed).length > 0 && attempts < 5) {
+      const resp: BatchWriteCommandOutput = await this.client.send(
+        new BatchWriteCommand({
+          RequestItems: unprocessed,
+        }),
+      )
+      unprocessed = resp.UnprocessedItems
+      attempts += 1
+    }
+  }
+
   async enqueue(ticket: QueueTicket) {
     const walletKey = pkQueueWallet(ticket.walletAddress)
     await this.client.send(
@@ -666,6 +764,9 @@ export class DynamoStore {
   async recordPurchase(payload: Omit<DeckPurchase, 'id' | 'purchasedAt'>) {
     const purchase: DeckPurchase = {
       id: `purchase-${nanoid()}`,
+      settlementState: payload.settlementState ?? 'pending',
+      payoutTxHash: payload.payoutTxHash,
+      payoutSettledAt: payload.payoutSettledAt,
       purchasedAt: Date.now(),
       ...payload,
     }

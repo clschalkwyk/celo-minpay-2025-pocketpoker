@@ -1,9 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import websocket from '@fastify/websocket'
 import fastifyPlugin from 'fastify-plugin'
-import type { FastifyInstance, FastifyRequest, RouteShorthandOptions } from 'fastify'
-import type WebSocket from 'ws'
+import type { FastifyInstance } from 'fastify'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerMetaRoutes } from './routes/meta.js'
 import { registerMatchRoutes } from './routes/match.js'
@@ -22,25 +20,14 @@ async function appPlugin(app: FastifyInstance) {
   await app.register(registerMatchRoutes)
   await app.register(registerProfileRoutes)
   await app.register(registerUploadRoutes)
-
-  // WebSocket registration
-  app.register(async (instance) => {
-    const wsOptions = { websocket: true } as RouteShorthandOptions
-    const wsGet = (instance.get as unknown as (
-      url: string,
-      opts: RouteShorthandOptions,
-      handler: (connection: { socket: WebSocket }, request: FastifyRequest<{ Params: { matchId: string } }>) => void,
-    ) => void).bind(instance)
-
-    wsGet('/ws/:matchId', wsOptions, (connection, request) => {
-      const { matchId } = request.params
-      matchmaking.registerConnection(matchId, connection.socket)
-    })
-  })
 }
 
 export const buildServer = async (): Promise<FastifyInstance> => {
-  const app = Fastify({ logger: true })
+  const app = Fastify({
+    logger: true,
+    // Allow up to ~6MB JSON bodies for image data URLs from the creator portal.
+    bodyLimit: 6 * 1024 * 1024,
+  })
 
   // This hook will remove the API Gateway stage from the path.
   // This is necessary because API Gateway includes the stage in the path
@@ -56,7 +43,6 @@ export const buildServer = async (): Promise<FastifyInstance> => {
   });
 
   await app.register(cors, { origin: true })
-  await app.register(websocket)
 
   // Register the root plugin
   await app.register(fastifyPlugin(appPlugin))

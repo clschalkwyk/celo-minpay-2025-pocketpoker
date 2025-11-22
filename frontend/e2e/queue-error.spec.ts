@@ -67,7 +67,7 @@ const registerRoutes = async (page: Page) => {
 test.describe('Queue error handling', () => {
   test('shows toast when matchmaking fails', async ({ page }) => {
     await registerRoutes(page)
-    await page.route('**/match/queue', (route) =>
+    await page.route('**/match/queue-demo', (route) =>
       route.fulfill({
         status: 500,
         body: 'Server error',

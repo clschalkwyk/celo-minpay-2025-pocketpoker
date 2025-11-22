@@ -30,40 +30,40 @@ export const RulesScreen = () => {
           </div>
         </div>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <section className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/50 to-pp-surface/70 p-5 shadow-[0_20px_55px_rgba(5,8,22,0.7)]">
           <h2 className="text-lg font-semibold">1. Stake &amp; Lock</h2>
           <p className="mt-2 text-sm text-gray-300">
-            Tap <span className="text-white">Play now</span> and the selected stake is secured via MiniPay.
-            We escrow both players’ stakes (MiniPay transaction + backend confirmation) before a match starts.
+            Tap <span className="text-white">Play now</span> and the selected stake is secured via MiniPay. Stakes are escrowed by
+            the contract before the match starts—contestants are only charged once both players commit.
           </p>
           <ul className="mt-4 space-y-2 text-sm text-gray-300">
             <li className="flex items-center gap-2">
               <Wallet className="h-4 w-4 text-pp-primary" />
-              MiniPay wallet connects automatically inside the splash screen.
+              MiniPay wallet auto-connects from the splash screen when the app detects MiniPay.
             </li>
             <li className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-pp-primary" />
-              Stakes live in a Celo escrow contract—cancellable if no opponent is found.
+              Stakes live in the escrow contract—if no opponent appears, credits are refunded instantly.
             </li>
           </ul>
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <section className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-[#051021] p-5 shadow-[0_20px_55px_rgba(5,8,22,0.7)]">
           <h2 className="text-lg font-semibold">2. Deal &amp; Reveal</h2>
           <p className="mt-2 text-sm text-gray-300">
-            Each player receives three unique cards. Your deck skin defines your card backs. Opponent cards stay facedown until a
-            reveal timer (~6s) expires to build suspense. After both sides are ready, we compare hands.
+            Each player receives three unique cards. Deck skins control the card backs, while opponent cards stay facedown until
+            the reveal timer (~6s) expires to keep suspense high. Once both sides are ready, we compare hands automatically.
           </p>
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <section className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-pp-surface/60 p-5 shadow-[0_20px_55px_rgba(5,8,22,0.7)]">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Trophy className="h-5 w-5 text-pp-primary" />
             3. Hand Ranking &amp; Winner Logic
           </h2>
           <p className="mt-2 text-sm text-gray-300">
-            PocketPoker uses a simplified three-card ranking. Higher entries beat lower ones; ties fall back to high-card math
-            (we score each combo internally to avoid ties). Order from strongest to weakest:
+            PocketPoker ranks three-card hands with a simplified hierarchy. Higher combos beat lower ones; ties fall back to
+            kicker math so results are decisive.
           </p>
           <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-gray-200">
             {handOrder.map((hand) => (
@@ -73,18 +73,18 @@ export const RulesScreen = () => {
             ))}
           </ol>
           <p className="mt-4 text-sm text-gray-300">
-            We score each hand under the hood:
-            <br />• Combos supply a base score (Straight Flush &gt; Trips &gt; Straight &gt; Flush &gt; Pair &gt; High Card).
-            <br />• High cards and kickers add decimals so ties are extremely rare.
-            <br />• Winner takes the entire pot (stake × 2). XP and ELO updates propagate through your profile immediately.
+            Scoring notes:
+            <br />• Combos provide a base score (Straight Flush down to High Card).
+            <br />• Kickers add decimals to remove ties.
+            <br />• Winner takes the pot (stake × 2) + XP/ELO updates fire through the profile immediately.
           </p>
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <section className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-[#091024] p-5 shadow-[0_20px_55px_rgba(5,8,22,0.7)]">
           <h2 className="text-lg font-semibold">4. Cosmetics &amp; Future Skins</h2>
           <p className="mt-2 text-sm text-gray-300">
-            Deck skins are purely visual—but they show up on the table (card backs + glow). As MiniPay creators drop custom skins,
-            you’ll be able to unlock, equip, and flex them during reveals.
+            Deck skins are purely visual—but they show up on the table (card backs, glows). As creators drop custom skins via MiniPay,
+            you’ll unlock, equip, and flex them during the reveal and on the leaderboard.
           </p>
         </section>
       </div>

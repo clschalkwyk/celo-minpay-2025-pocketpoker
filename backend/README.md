@@ -15,19 +15,12 @@ npm start      # run compiled server
 ## REST API
 
 - `POST /auth/init` – bootstrap a profile for the provided `walletAddress`.
-- `POST /match/queue` – queue a wallet at a stake; pairs players immediately if possible.
+- `POST /match/queue-demo` – queue a wallet at a stake using demo credits.
+- `POST /match/queue-escrow` – queue a wallet after locking MiniPay funds (requires `txHash`).
 - `POST /match/cancel` – remove a queued ticket.
 - `GET /match/:id` – fetch match details.
 - `GET /decks`, `GET /missions`, `GET /leaderboard` – content feeds used throughout the app.
 - `GET /health` – simple health check.
-
-## WebSocket Events
-
-Connect to `/ws/:matchId` to receive:
-
-- `match_init` – players paired and cards dealt.
-- `state_update` – readiness updates.
-- `result` – resolved winner summary.
 
 ## Environment
 
@@ -55,6 +48,18 @@ To support custom deck artwork uploads, the backend can mint short-lived S3 pre-
 - `ASSET_UPLOAD_BUCKET` – target bucket name (required)
 - `ASSET_UPLOAD_REGION` – bucket region (falls back to `AWS_REGION`)
 - `ASSET_PUBLIC_BASE_URL` – optional CDN/public URL prefix; defaults to the S3 bucket URL
+- IAM: grant `s3:PutObject` on `arn:aws:s3:::<bucket>/*` and `s3:ListBucket` on `arn:aws:s3:::<bucket>`.
+- S3 CORS: allow `PUT` and `GET` from your app origin. Example:
+  ```json
+  [
+    {
+      "AllowedOrigins": ["https://your-app.example"],
+      "AllowedMethods": ["PUT", "GET"],
+      "AllowedHeaders": ["*"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+  ```
 
 Request body:
 

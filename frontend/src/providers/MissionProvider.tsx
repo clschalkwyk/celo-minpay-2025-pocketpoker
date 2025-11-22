@@ -32,6 +32,7 @@ export type MissionContextValue = {
   loading: boolean
   recordMatchProgress: (payload: { xpEarned: number; matchesPlayed: number }) => void
   claimMission: (id: string) => void
+  refreshMissions: () => Promise<void>
 }
 
 const MissionContext = createContext<MissionContextValue | undefined>(undefined)
@@ -75,28 +76,26 @@ export const MissionProvider = ({ children }: { children: ReactNode }) => {
   const { missions, loading } = state
   const { address, status } = useMiniPayContext()
 
-  useEffect(() => {
+  const loadMissions = useCallback(async () => {
     if (!address || status !== 'ready') {
       dispatch({ type: 'set_missions', missions: [] })
       dispatch({ type: 'set_loading', value: status === 'checking' })
       return
     }
-    let cancelled = false
     dispatch({ type: 'set_loading', value: true })
-    Api.fetchMissions(address)
-      .then((res) => {
-        if (cancelled) return
-        dispatch({ type: 'set_missions', missions: res.missions })
-        dispatch({ type: 'set_loading', value: false })
-      })
-      .catch((err) => {
-        console.error('Failed to load missions', err)
-        if (!cancelled) dispatch({ type: 'set_loading', value: false })
-      })
-    return () => {
-      cancelled = true
+    try {
+      const res = await Api.fetchMissions(address)
+      dispatch({ type: 'set_missions', missions: res.missions })
+    } catch (err) {
+      console.error('Failed to load missions', err)
+    } finally {
+      dispatch({ type: 'set_loading', value: false })
     }
   }, [address, status])
+
+  useEffect(() => {
+    void loadMissions()
+  }, [loadMissions])
 
   const recordMatchProgress = useCallback(
     ({ xpEarned, matchesPlayed }: { xpEarned: number; matchesPlayed: number }) => {
@@ -122,7 +121,14 @@ export const MissionProvider = ({ children }: { children: ReactNode }) => {
     [address],
   )
 
-  const value = useMemo(() => ({ missions, loading, recordMatchProgress, claimMission }), [missions, loading, recordMatchProgress, claimMission])
+  const refreshMissions = useCallback(async () => {
+    await loadMissions()
+  }, [loadMissions])
+
+  const value = useMemo(
+    () => ({ missions, loading, recordMatchProgress, claimMission, refreshMissions }),
+    [missions, loading, recordMatchProgress, claimMission, refreshMissions],
+  )
 
   return <MissionContext.Provider value={value}>{children}</MissionContext.Provider>
 }

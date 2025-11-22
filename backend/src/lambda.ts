@@ -55,13 +55,13 @@ const normalizeEventPaths = (event: LambdaEvent) => {
   }
 
   if ('path' in event) {
-    ;(event as APIGatewayProxyEvent).path = normalized
+    (event as APIGatewayProxyEvent).path = normalized
   }
   if ('rawPath' in event) {
-    ;(event as APIGatewayProxyEventV2).rawPath = normalized
+    (event as APIGatewayProxyEventV2).rawPath = normalized
   }
   if ('requestContext' in event && 'http' in event.requestContext && event.requestContext.http) {
-    ;(event.requestContext.http as { path?: string }).path = normalized
+    (event.requestContext.http as { path?: string }).path = normalized
   }
 }
 

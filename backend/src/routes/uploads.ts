@@ -4,19 +4,19 @@ import { extname } from 'node:path'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
-const uploadBucket = process.env.ASSET_UPLOAD_BUCKET
-const uploadRegion = process.env.ASSET_UPLOAD_REGION || process.env.AWS_REGION || 'us-east-1'
-const publicBaseUrl =
-  process.env.ASSET_PUBLIC_BASE_URL ||
-  (uploadBucket ? `https://${uploadBucket}.s3.${uploadRegion}.amazonaws.com` : undefined)
-
-const s3Client = uploadBucket
-  ? new S3Client({
-      region: uploadRegion,
-    })
-  : undefined
-
 export async function registerUploadRoutes(app: FastifyInstance) {
+  const uploadBucket = process.env.ASSET_UPLOAD_BUCKET
+  const uploadRegion = process.env.ASSET_UPLOAD_REGION || process.env.AWS_REGION || 'us-east-1'
+  const publicBaseUrl =
+    process.env.ASSET_PUBLIC_BASE_URL ||
+    (uploadBucket ? `https://${uploadBucket}.s3.${uploadRegion}.amazonaws.com` : undefined)
+
+  const s3Client = uploadBucket
+    ? new S3Client({
+        region: uploadRegion,
+      })
+    : undefined
+
   if (!uploadBucket || !s3Client) {
     app.log.warn('Upload routes disabled: ASSET_UPLOAD_BUCKET not configured')
     return
@@ -45,8 +45,9 @@ export async function registerUploadRoutes(app: FastifyInstance) {
       const fileUrl = `${publicBaseUrl}/${key}`
       return { uploadUrl, fileUrl, key }
     } catch (err) {
+      const message = (err as Error)?.message
       request.log.error({ err }, 'failed to create signed upload url')
-      return reply.status(500).send({ error: 'Unable to create upload URL' })
+      return reply.status(500).send({ error: 'Unable to create upload URL', detail: message })
     }
   })
 }

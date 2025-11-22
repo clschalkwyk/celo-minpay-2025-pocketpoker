@@ -16,16 +16,19 @@ import {
   requestAccounts,
   sendStakeTx,
 } from '../lib/minipay'
+import { CELO_TO_ZAR_RATE, convertZarToCelo } from '../lib/currency'
 
 type MiniPayContextValue = {
   status: MiniPayStatus
   address?: string
   balance: number
+  celoBalance: number
   error?: string
   isMiniPay: boolean
   connect: () => Promise<void>
   refreshBalance: () => Promise<void>
   sendStake: (stake: number) => Promise<{ txHash: string }>
+  exchangeRate: number
 }
 
 const MiniPayContext = createContext<MiniPayContextValue | undefined>(undefined)
@@ -34,6 +37,7 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
   const [status, setStatus] = useState<MiniPayStatus>('checking')
   const [address, setAddress] = useState<string>()
   const [balance, setBalance] = useState<number>(0)
+  const [celoBalance, setCeloBalance] = useState(0)
   const [error, setError] = useState<string>()
   const [isMiniPay, setIsMiniPay] = useState(false)
   const escrowAddress = import.meta.env.VITE_ESCROW_ADDRESS
@@ -45,13 +49,15 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
         const provider = detectMiniPay()
         if (provider) {
           const value = await fetchMiniPayBalance(provider, address)
-          setBalance(Number(value.toFixed(2)))
+          setCeloBalance(value)
+          setBalance(Number((value * CELO_TO_ZAR_RATE).toFixed(2)))
           return
         }
       }
       // fallback demo balance
       const demo = Number((20 + Math.random() * 10).toFixed(2))
       setBalance(demo)
+      setCeloBalance(convertZarToCelo(demo))
     } catch (err) {
       console.error(err)
       setError('Unable to fetch balance')
@@ -106,7 +112,9 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
           const provider = detectMiniPay()
           if (!provider) throw new Error('MiniPay provider not found')
           await ensureChain(provider, requiredChain)
-          const txHash = await sendStakeTx({ provider, from: address, stake, contractAddress: escrowAddress })
+          const celoAmount = convertZarToCelo(stake)
+          if (celoAmount <= 0) throw new Error('Invalid stake amount')
+          const txHash = await sendStakeTx({ provider, from: address, stake: celoAmount, contractAddress: escrowAddress })
           await refreshBalance()
           return { txHash }
         } catch (err) {
@@ -117,14 +125,26 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
       // fallback demo tx
       const txHash = fakeTxHash()
       setBalance((prev) => Number(Math.max(prev - stake, 0).toFixed(2)))
+      setCeloBalance((prev) => Math.max(prev - convertZarToCelo(stake), 0))
       return { txHash }
     },
     [isMiniPay, address, escrowAddress, refreshBalance, requiredChain],
   )
 
   const value = useMemo(
-    () => ({ status, address, balance, error, isMiniPay, connect, refreshBalance, sendStake }),
-    [status, address, balance, error, isMiniPay, connect, refreshBalance, sendStake],
+    () => ({
+      status,
+      address,
+      balance,
+      celoBalance,
+      error,
+      isMiniPay,
+      connect,
+      refreshBalance,
+      sendStake,
+      exchangeRate: CELO_TO_ZAR_RATE,
+    }),
+    [status, address, balance, celoBalance, error, isMiniPay, connect, refreshBalance, sendStake],
   )
 
   return <MiniPayContext.Provider value={value}>{children}</MiniPayContext.Provider>

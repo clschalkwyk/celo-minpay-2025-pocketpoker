@@ -5,7 +5,6 @@ import { useProfile } from '../../hooks/useProfile'
 
 const SHOW_DEBUG = import.meta.env.VITE_DEBUG_OVERLAY === 'true'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
-const WS_URL = import.meta.env.VITE_WS_URL || BACKEND_URL.replace(/^http/, 'ws') + '/ws'
 
 export const DebugOverlay = () => {
   const { pathname } = useLocation()
@@ -16,12 +15,13 @@ export const DebugOverlay = () => {
     () => [
       ['route', pathname],
       ['backend', BACKEND_URL],
-      ['websocket', WS_URL],
       ['miniPay.status', miniPay.status],
       ['miniPay.address', miniPay.address ?? '—'],
-      ['miniPay.balance', miniPay.balance.toFixed(2)],
+      ['miniPay.balanceR', miniPay.balance.toFixed(2)],
+      ['miniPay.balanceCelo', miniPay.celoBalance.toFixed(6)],
       ['miniPay.isMiniPay', String(miniPay.isMiniPay)],
       ['miniPay.error', miniPay.error ?? 'none'],
+      ['miniPay.exchangeRate', `1 CELO ≈ R${miniPay.exchangeRate.toLocaleString()}`],
       ['profile.loading', String(profileLoading)],
       ['profile.username', profile?.username ?? '—'],
     ],
@@ -30,8 +30,10 @@ export const DebugOverlay = () => {
       miniPay.status,
       miniPay.address,
       miniPay.balance,
+      miniPay.celoBalance,
       miniPay.isMiniPay,
       miniPay.error,
+      miniPay.exchangeRate,
       profileLoading,
       profile?.username,
     ],

@@ -29,17 +29,28 @@ export const MissionsScreen = () => {
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-2xl font-semibold">Missions</h1>
-        </div>
-        {loading ? (
-          <p className="text-sm text-gray-400">Loading missions...</p>
-        ) : (
-          <div className="space-y-4">
-            {missions.map((mission) => (
-              <MissionCard key={mission.id} mission={mission} onClaim={handleClaimMission} />
-            ))}
+          <div>
+            <p className="text-xs uppercase tracking-[0.5em] text-gray-400">Everyhand mission</p>
+            <h1 className="text-2xl font-semibold">Missions</h1>
           </div>
-        )}
+        </div>
+        <section className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-pp-surface/60 p-5 shadow-[0_25px_65px_rgba(5,8,22,0.7)]">
+          <p className="text-sm uppercase tracking-[0.4em] text-gray-400">Current assignments</p>
+          <p className="mt-1 text-sm text-gray-200">
+            Complete these challenges to stack XP, unlock decks, and flex on the leaderboard.
+          </p>
+          <div className="mt-4 space-y-3">
+            {loading ? (
+              <p className="text-xs text-gray-500">Loading missions...</p>
+            ) : missions.length ? (
+              missions.map((mission) => (
+                <MissionCard key={mission.id} mission={mission} onClaim={handleClaimMission} />
+              ))
+            ) : (
+              <p className="text-xs text-gray-500">No missions unlocked yet. Play matches to unlock new goals.</p>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   )

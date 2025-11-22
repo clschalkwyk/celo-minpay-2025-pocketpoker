@@ -213,6 +213,7 @@ export class MemoryStore {
   submitCreatorDeck(payload: {
     deckName: string
     creatorName: string
+    creatorWallet?: WalletAddress
     rarity: DeckTheme['rarity']
     description: string
     previewImageUrl: string
@@ -221,6 +222,7 @@ export class MemoryStore {
       id: `creator-${nanoid()}`,
       deckName: payload.deckName,
       creatorName: payload.creatorName,
+      creatorWallet: payload.creatorWallet,
       rarity: payload.rarity,
       description: payload.description,
       previewImageUrl: payload.previewImageUrl,
@@ -283,6 +285,27 @@ export class MemoryStore {
 
   updateProfile(profile: UserProfile) {
     this.profiles.set(profile.walletAddress, profile)
+  }
+
+  resetProfile(walletAddress: WalletAddress) {
+    const existing = this.getOrCreateProfile(walletAddress)
+    const reset: UserProfile = {
+      ...existing,
+      elo: 1500,
+      level: 1,
+      xp: 0,
+      xpToNextLevel: 200,
+      credits: 50,
+      stats: {
+        matches: 0,
+        wins: 0,
+        losses: 0,
+        streak: 0,
+      },
+    }
+    this.updateProfile(reset)
+    this.missions.delete(walletAddress)
+    return reset
   }
 
   spendCredits(walletAddress: WalletAddress, amount: number) {
@@ -375,6 +398,9 @@ export class MemoryStore {
     const purchase: DeckPurchase = {
       id: `purchase-${nanoid()}`,
       purchasedAt: Date.now(),
+      settlementState: payload.settlementState ?? 'pending',
+      payoutTxHash: payload.payoutTxHash,
+      payoutSettledAt: payload.payoutSettledAt,
       ...payload,
     }
     this.purchases.unshift(purchase)

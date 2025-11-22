@@ -20,8 +20,8 @@ Use this as a phased checklist. Mark items done and keep scopes tight.
 ## Phase 2 – Backend MVP (Node.js)
 - [x] Scaffold `backend/` (Express/Fastify + TypeScript).
 - [x] Data model: UserProfile, Match, Mission, DeckTheme (SQLite/Prisma or in‑memory).
-- [x] REST: `POST /auth/init`, `POST /match/queue`, `POST /match/cancel`, `GET /decks`, `GET /missions`, `GET /leaderboard`.
-- [x] WebSocket: rooms per match; events `match_init`, `state_update`, `result`.
+- [x] REST: `POST /auth/init`, `POST /match/queue-demo`, `POST /match/queue-escrow`, `POST /match/cancel`, `GET /decks`, `GET /missions`, `GET /leaderboard`.
+- [x] Match update loop: timers + REST polling for lifecycle + results.
 - [x] Game logic: 3‑card deal/eval, XP/level, ELO, missions update.
 - [x] Tests: hand evaluator + matchmaking integration.
 
@@ -39,7 +39,7 @@ Use this as a phased checklist. Mark items done and keep scopes tight.
 - [x] Wire tx → backend confirmation → in‑app result.
 
 ## Phase 5 – Matchmaking & Result Wiring
-- [x] Frontend connects to WS; subscribe per match.
+- [x] Frontend polls match state per match.
 - [x] Implement Ready → Reveal → Result transitions and animations.
 - [x] Persist profile progress; update XP/ELO after result.
 - [x] E2E (Playwright/Cypress): lobby → queue → match → result (mobile viewport).

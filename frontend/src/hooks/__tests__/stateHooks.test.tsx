@@ -73,7 +73,7 @@ describe('state hooks', () => {
     vi.spyOn(window, 'setInterval').mockImplementation(() => 0 as unknown as number)
     vi.spyOn(window, 'clearInterval').mockImplementation(() => {})
     vi.spyOn(Api, 'initProfile').mockResolvedValue({ profile: sampleProfile })
-    vi.spyOn(Api, 'queueMatch').mockResolvedValue({ status: 'matched', match: matchPayload })
+    vi.spyOn(Api, 'queueDemoMatch').mockResolvedValue({ status: 'matched', match: matchPayload })
     vi.spyOn(Api, 'getMatch').mockResolvedValue({ match: matchPayload })
   })
 
@@ -104,7 +104,7 @@ describe('state hooks', () => {
     )
 
     await user.click(screen.getByText('queue'))
-    await waitFor(() => expect(Api.queueMatch).toHaveBeenCalled())
+    await waitFor(() => expect(Api.queueDemoMatch).toHaveBeenCalled())
 
     await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('active'))
   })

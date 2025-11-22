@@ -23,17 +23,25 @@ type UIStoreValue = {
   toasts: Toast[]
   pushToast: (message: string, variant?: Toast['variant']) => void
   dismissToast: (id: string) => void
+  realMoneyMode: boolean
+  setRealMoneyMode: (value: boolean) => void
 }
 
 const UIStoreContext = createContext<UIStoreValue | undefined>(undefined)
 
 const TOAST_DURATION_MS = 3500
+const REAL_MONEY_KEY = 'pocketpoker_real_money_mode'
 
 export const UIStoreProvider = ({ children }: { children: ReactNode }) => {
   const [selectedStake, setSelectedStake] = useState(1)
   const [isMatchmakingOpen, setMatchmakingOpen] = useState(false)
   const [matchmakingStake, setMatchmakingStake] = useState(1)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const getStoredRealMoneyMode = () => {
+    if (typeof window === 'undefined' || !window.localStorage?.getItem) return false
+    return window.localStorage.getItem(REAL_MONEY_KEY) === 'true'
+  }
+  const [realMoneyMode, setRealMoneyModeState] = useState(() => getStoredRealMoneyMode())
 
   const openMatchmaking = useCallback((stake: number) => {
     setMatchmakingStake(stake)
@@ -56,6 +64,13 @@ export const UIStoreProvider = ({ children }: { children: ReactNode }) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id))
   }, [])
 
+  const setRealMoneyMode = useCallback((value: boolean) => {
+    setRealMoneyModeState(value)
+    if (typeof window !== 'undefined' && window.localStorage?.setItem) {
+      window.localStorage.setItem(REAL_MONEY_KEY, String(value))
+    }
+  }, [])
+
   const value = useMemo(
     () => ({
       selectedStake,
@@ -67,8 +82,21 @@ export const UIStoreProvider = ({ children }: { children: ReactNode }) => {
       toasts,
       pushToast,
       dismissToast,
+      realMoneyMode,
+      setRealMoneyMode,
     }),
-    [selectedStake, isMatchmakingOpen, matchmakingStake, openMatchmaking, closeMatchmaking, toasts, pushToast, dismissToast],
+    [
+      selectedStake,
+      isMatchmakingOpen,
+      matchmakingStake,
+      openMatchmaking,
+      closeMatchmaking,
+      toasts,
+      pushToast,
+      dismissToast,
+      realMoneyMode,
+      setRealMoneyMode,
+    ],
   )
 
   return <UIStoreContext.Provider value={value}>{children}</UIStoreContext.Provider>

@@ -1,8 +1,9 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useMemo, useReducer, useRef } from 'react'
 import type { MatchState } from '../../types'
 import { CardRow } from './CardRow'
 import { PotDisplay } from './PotDisplay'
 import { useAmbience } from '../../hooks/useSound'
+import { deriveLocalResult } from '../../lib/handEvaluator'
 
 const revealDelayMs = Number(import.meta.env.VITE_CARD_REVEAL_MS ?? 10000)
 
@@ -52,8 +53,10 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
   const revealTimeoutRef = useRef<number | undefined>(undefined)
   const revealNotifiedRef = useRef(false)
   const latestResultRef = useRef(match.result)
-  const youWin = match.result?.winner === 'you'
-  const oppWin = match.result?.winner === 'opponent'
+  const localResult = useMemo(() => deriveLocalResult(match.you.cards, match.opponent.cards), [match.you.cards, match.opponent.cards])
+  const resolvedWinner = match.result?.winner ?? (opponentRevealed ? localResult?.winner : undefined)
+  const youWin = resolvedWinner === 'you'
+  const oppWin = resolvedWinner === 'opponent'
   const { playCardSwipe, playAmbiance, stopAmbiance } = useAmbience()
 
   useEffect(() => {
@@ -65,9 +68,13 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
     window.clearInterval(countdownIntervalRef.current)
     window.clearTimeout(revealTimeoutRef.current)
     revealNotifiedRef.current = false
-    playCardSwipe()
+    const swipeTimers: number[] = []
+    for (let i = 0; i < 3; i += 1) {
+      swipeTimers.push(window.setTimeout(() => playCardSwipe(), i * 180))
+    }
     playAmbiance()
     return () => {
+      swipeTimers.forEach((timer) => window.clearTimeout(timer))
       stopAmbiance()
     }
   }, [match.id, playCardSwipe, playAmbiance, stopAmbiance])
@@ -113,9 +120,9 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
   }, [match.opponent.ready, opponentRevealed, match.id, totalSeconds])
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#0c1f1a] to-[#041a1f] p-6 shadow-glow-green">
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between text-gray-300">
+    <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#0c1f1a] to-[#041a1f] p-4 sm:p-6 shadow-glow-green">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between text-gray-300 text-sm sm:text-base">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500">You</p>
             <p className="text-lg font-semibold text-white">{match.you.username}</p>
@@ -153,12 +160,12 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
             <p className="text-center text-xs uppercase tracking-[0.3em] text-gray-400">
               Reveal in {revealCountdown ?? totalSeconds}s
             </p>
-            <div className="mt-1 h-1 w-full rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-pp-primary transition-all duration-500"
-                style={{ width: `${((revealCountdown ?? totalSeconds) / totalSeconds) * 100}%` }}
-              ></div>
-            </div>
+          <div className="mt-1 h-1 w-full rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-pp-primary transition-all duration-500"
+              style={{ width: `${((revealCountdown ?? totalSeconds) / totalSeconds) * 100}%` }}
+            ></div>
+          </div>
           </div>
         )}
       </div>

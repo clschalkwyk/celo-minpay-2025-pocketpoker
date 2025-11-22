@@ -29,9 +29,18 @@ export const LeaderboardScreen = () => {
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-2xl font-semibold">Global Leaderboard</h1>
+          <div>
+            <p className="text-xs uppercase tracking-[0.5em] text-gray-400">Global ranking</p>
+            <h1 className="text-2xl font-semibold">Leaderboard</h1>
+          </div>
         </div>
-        <LeaderboardTable entries={entries} selfId={profile?.id} />
+        <section className="glass-panel rounded-3xl border border-pp-secondary/40 bg-gradient-to-br from-black/40 to-pp-surface/60 p-5 shadow-[0_25px_60px_rgba(5,8,22,0.75)]">
+          <div className="mb-4 flex items-center justify-between text-xs uppercase tracking-[0.4em] text-gray-400">
+            <span>Top contenders</span>
+            <span>Challenge mode</span>
+          </div>
+          <LeaderboardTable entries={entries} selfId={profile?.id} />
+        </section>
       </div>
     </div>
   )

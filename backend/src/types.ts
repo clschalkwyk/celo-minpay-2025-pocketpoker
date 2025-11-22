@@ -22,6 +22,8 @@ export type UserProfile = {
 
 export type DeckStatus = 'live' | 'pending' | 'live_soon'
 
+export type SettlementState = 'pending' | 'paid'
+
 export type DeckTheme = {
   id: string
   name: string
@@ -31,6 +33,7 @@ export type DeckTheme = {
   unlockCondition: string
   price?: number
   creatorName?: string
+  creatorWallet?: WalletAddress
   status?: DeckStatus
 }
 
@@ -45,6 +48,9 @@ export type CreatorDeckSubmission = {
   submittedAt: number
   reviewNotes?: string
   nsfwFlag?: boolean
+  creatorWallet?: WalletAddress
+  reviewedAt?: number
+  reviewedBy?: string
 }
 
 export type DeckPurchase = {
@@ -52,10 +58,14 @@ export type DeckPurchase = {
   deckId: string
   deckName: string
   creatorName?: string
+  creatorWallet?: WalletAddress
   buyer: WalletAddress
   price: number
   platformFee: number
   creatorShare: number
+  settlementState?: SettlementState
+  payoutTxHash?: string
+  payoutSettledAt?: number
   txHash?: string
   purchasedAt: number
 }
@@ -118,11 +128,6 @@ export type QueueTicket = {
   stake: number
   enqueuedAt: number
 }
-
-export type MatchmakingEvent =
-  | { type: 'match_init'; payload: Match }
-  | { type: 'state_update'; payload: Match }
-  | { type: 'result'; payload: Match }
 
 export type QueueOptions = {
   botOpponent?: boolean

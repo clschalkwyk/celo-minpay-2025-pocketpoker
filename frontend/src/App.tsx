@@ -14,6 +14,8 @@ import { MatchmakingModal } from './components/match/MatchmakingModal'
 import { ToastStack } from './components/ui/ToastStack'
 import { DebugOverlay } from './components/debug/DebugOverlay'
 
+const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'dev-local'
+
 const App = () => (
   <AppProviders>
     <BrowserRouter>
@@ -32,6 +34,9 @@ const App = () => (
       </Routes>
       <MatchmakingModal />
       <ToastStack />
+      <div className="fixed bottom-2 right-3 z-50 rounded-full bg-black/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-white/60">
+        v{APP_VERSION}
+      </div>
       <DebugOverlay />
     </BrowserRouter>
   </AppProviders>

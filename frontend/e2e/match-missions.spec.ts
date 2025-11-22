@@ -52,28 +52,6 @@ const mockMatch = {
 
 test.describe('Match + mission flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(`
-      (() => {
-        class MockWebSocket {
-          constructor(url) {
-            this.url = url
-            setTimeout(() => {
-              if (this.onopen) this.onopen({ type: 'open' })
-            }, 0)
-          }
-          send() {}
-          close() {
-            if (this.onclose) this.onclose({ type: 'close', wasClean: true })
-          }
-          addEventListener(type, handler) {
-            if (type === 'message') this.onmessage = handler
-          }
-          removeEventListener() {}
-        }
-        window.WebSocket = MockWebSocket
-      })();
-    `)
-
     await page.route('**/auth/init', (route) =>
       route.fulfill({
         json: {
@@ -146,7 +124,7 @@ test.describe('Match + mission flow', () => {
       await route.fulfill({ json: buildMissionPayload(missionProgress) })
     })
 
-    await page.route('**/match/queue', (route) =>
+    await page.route('**/match/queue-demo', (route) =>
       route.fulfill({
         json: {
           status: 'matched',

@@ -42,4 +42,29 @@ describe('profile routes', () => {
     expect(res.json().profile.username).toBe('PocketHero')
     expect(res.json().profile.avatarUrl).toBe('https://avatar.vercel.sh/custom')
   })
+
+  it('resets profile stats and credits', async () => {
+    const walletAddress = '0xPROFILE_RESET'
+    const profile = await store.getOrCreateProfile(walletAddress)
+    profile.stats.matches = 12
+    profile.stats.wins = 7
+    profile.level = 4
+    profile.xp = 600
+    profile.credits = 5
+    await store.updateProfile(profile)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/profile/reset',
+      payload: { walletAddress },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const updated = res.json().profile
+    expect(updated.level).toBe(1)
+    expect(updated.xp).toBe(0)
+    expect(updated.credits).toBe(50)
+    expect(updated.stats.matches).toBe(0)
+    expect(updated.stats.wins).toBe(0)
+  })
 })

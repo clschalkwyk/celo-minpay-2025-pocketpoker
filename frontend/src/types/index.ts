@@ -30,11 +30,12 @@ export type DeckTheme = {
   name: string
   rarity: 'common' | 'rare' | 'ranked' | 'legendary' | 'mythic'
   description: string
-  previewImage: string
+  previewImage?: string
   previewImageUrl?: string
   unlockCondition: string
   price?: number
   creatorName?: string
+  creatorWallet?: string
   status?: 'live' | 'pending' | 'live_soon'
 }
 
@@ -42,6 +43,7 @@ export type CreatorDeckSubmission = {
   id: string
   deckName: string
   creatorName: string
+  creatorWallet?: string
   rarity: DeckTheme['rarity']
   description: string
   previewImageUrl: string
@@ -49,6 +51,8 @@ export type CreatorDeckSubmission = {
   submittedAt: number
   reviewNotes?: string
   nsfwFlag?: boolean
+  reviewedAt?: number
+  reviewedBy?: string
 }
 
 export type DeckPurchase = {
@@ -56,10 +60,14 @@ export type DeckPurchase = {
   deckId: string
   deckName: string
   creatorName?: string
+  creatorWallet?: string
   buyer: string
   price: number
   platformFee: number
   creatorShare: number
+  settlementState?: 'pending' | 'paid'
+  payoutTxHash?: string
+  payoutSettledAt?: number
   txHash?: string
   purchasedAt: number
 }

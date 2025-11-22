@@ -130,7 +130,7 @@ PocketPoker becomes:
 ### Frontend
 - **React + Vite + TypeScript**
 - **TailwindCSS** with a custom theme + a few utility components.
-- WebSocket client for live match updates.
+- Polling client for live match updates (MiniPay runtime blocks WebSockets).
 - Deployed as a static web app (S3/CloudFront, Vercel, Netlify, etc.).
 
 ### Backend
@@ -142,9 +142,9 @@ PocketPoker becomes:
   - XP and ELO calculations.
   - Missions and unlock tracking.
   - Leaderboards.
-- Real‑time:
-  - WebSockets for match state sync.
-  - Simple pub/sub or in‑memory match registry.
+- Match updates:
+  - Lightweight polling for match state sync (no WebSockets inside MiniPay).
+  - Simple in‑memory match registry powering the queue + timers.
 
 ### Smart Contract (Celo)
 - Very simple game escrow contract:

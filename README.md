@@ -6,7 +6,7 @@ PocketPoker is a mobile-first MiniPay experience where players stake a few cUSD,
 
 ```
 frontend/  # Vite + React client (mobile-first MiniPay UI)
-backend/   # Node.js API + WebSocket server for matchmaking and results
+backend/   # Node.js API server for matchmaking and results
 contracts/ # Hardhat workspace for the MiniPay escrow contract
 assets/    # Marketing art, deck previews, screenshots
 docs/      # Product brief, UI spec, style guide (source of truth)
@@ -37,7 +37,7 @@ docs/      # Product brief, UI spec, style guide (source of truth)
    - Node.js 20+ and npm 10+.
    - One terminal per service (backend + frontend) or use a process manager such as `npm-run-all`.
 2. **Create env files**
-   - Copy the samples below into `frontend/.env.local` and `backend/.env`. Point `VITE_BACKEND_URL` / `VITE_WS_URL` to your local backend (`http://localhost:4000` / `ws://localhost:4000/ws`) and set `VITE_ESCROW_ADDRESS` to any placeholder when toggling MiniPay demo mode.
+   - Copy the samples below into `frontend/.env.local` and `backend/.env`. Point `VITE_BACKEND_URL` to your local backend (`http://localhost:4000`) and set `VITE_ESCROW_ADDRESS` to any placeholder when toggling MiniPay demo mode.
 3. **Start the backend**
    ```bash
    cd backend
@@ -57,7 +57,7 @@ docs/      # Product brief, UI spec, style guide (source of truth)
    npx hardhat run scripts/deploy.ts --network localhost
    npm run deploy:alfajores        # deploy with the Celo Composer defaults (set PRIVATE_KEY first)
    ```
-   Update `VITE_ESCROW_ADDRESS` and backend payout config with the deployed address when you move beyond demo mode.
+   Update `VITE_ESCROW_ADDRESS` (currently `0x8Adf65484A90Cb691B712484B24B6D52d2cF927c` on Celo Sepolia) and backend payout config with the deployed address when you move beyond demo mode. Use `VITE_CELO_ZAR_RATE` to set your fiat↔CELO conversion (default `100000`, i.e. R1 ↔ 0.00001 CELO) so real-money stakes stay tiny on-chain.
 6. **Verify flows**
    - Visit `http://localhost:5173` (mobile viewport recommended).
    - Queue a match; demo credits (R50 seeded per wallet) are deducted instead of real MiniPay stakes and refunded on cancel/timeout.
@@ -76,9 +76,9 @@ docker build -t pocketpoker-backend .
 docker run -p 4000:4000 --env-file backend/.env pocketpoker-backend
 ```
 
-The image only contains the Fastify backend + WebSocket server. Pass in your usual backend env vars (`PORT`, `CELO_RPC_URL`, etc.). The container exposes port `4000`.
+The image only contains the Fastify backend API server. Pass in your usual backend env vars (`PORT`, `CELO_RPC_URL`, etc.). The container exposes port `4000`.
 
-> ℹ️ AWS Lambda is not a great fit for this backend because the matchmaking WebSocket endpoint requires a long-lived connection. Use a service that keeps the container running (App Runner, ECS/Fargate, EC2, Fly.io, etc.) so the `/ws/:matchId` socket stays up. If you still want to experiment with Lambda container images, you’ll need the [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) and a different WebSocket strategy.
+> ℹ️ AWS Lambda (and other request-per-run platforms) still aren’t a great fit because matchmaking timers live in memory. Use a service that keeps the container running (App Runner, ECS/Fargate, EC2, Fly.io, etc.) so those timers fire reliably. If you still want to experiment with Lambda container images, add the [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) and make sure your timers don’t rely on long-lived state.
 
 ## Makefile Deployment Helpers
 
@@ -111,8 +111,9 @@ Each command uses the AWS CLI; ensure you’re authenticated with IAM credential
 ## Missions & Creator Decks
 
 - **Mission persistence** – Mission state is stored server-side per MiniPay wallet. The frontend `MissionProvider` records match progress and claims rewards via `/missions/progress` + `/missions/:id/claim`, so XP/mission completion survives refreshes. Point `MissionProvider` at a real persistence layer when you move past the in-memory store.
-- **Creator deck portal** – Visit `/creator-decks` to submit mock card art (PNG/JPEG or hosted URL) and manage the review queue. Submissions are kept in memory via `/creator-decks` endpoints; approving a deck flags it as “Live soon” on the main Decks screen so players can preview community drops.
+- **Creator deck portal** – Visit `/creator-decks` to submit mock card art (PNG/JPEG or hosted URL) together with the creator’s MiniPay wallet, and manage the review queue. Each submission stores the wallet so purchases can later trigger creator payouts once the deck is approved and priced. Submissions are kept in memory via `/creator-decks` endpoints; approving a deck flags it as “Live soon” on the main Decks screen so players can preview community drops.
 - **Deck status badges** – Deck cards now surface placeholder badges for “Pending review” and “Live soon” states to tease marketplace availability before unlock mechanics are wired up.
+- **Settlements** – Buying a creator deck records the price, platform fee, creator share, creator wallet, and a `settlementState = pending` flag (and, when paid, `payoutSettledAt`/`payoutTxHash`) so your payout job can sweep funds from the escrow contract to the creator. Use the recorded `txHash` + `creatorWallet` to drive that payout externally.
 - **Profile customization** – After five completed matches, players unlock `/profile`, where they can pick a new nickname + avatar (preset gallery or custom URL). The frontend calls `/profile/update`, which enforces the five-match gate and validates names/URLs.
 - **Demo credits vs. paid skins** – Matches only consume the free R50 credit balance that every profile receives (credits are deducted on queue, refunded on cancel/timeout, and payouts go to winners). Skins are now purchased via MiniPay micro-payments: locked decks display a price, trigger a MiniPay transaction, and call `/decks/purchase` to unlock once the payment succeeds.
 - **Admin dashboard** – Go to `/admin`, enter the admin key (`VITE_ADMIN_KEY` / `ADMIN_API_KEY`), and manage submissions, NSFW flags, and review notes while monitoring sales + the 2% platform fee totals.
@@ -121,12 +122,12 @@ Each command uses the AWS CLI; ensure you’re authenticated with IAM credential
 
 ```bash
 # frontend/.env.local
-VITE_MINIPAY_PROVIDER=https://example.rpc
+VITE_MINIPAY_PROVIDER=https://forno.celo-sepolia.celo-testnet.org
 VITE_MINIPAY_CHAIN_ID=44787
 VITE_BACKEND_URL=http://localhost:4000
-VITE_WS_URL=ws://localhost:4000/ws
-VITE_ESCROW_ADDRESS=0x0000000000000000000000000000000000000000
+VITE_ESCROW_ADDRESS=0x8Adf65484A90Cb691B712484B24B6D52d2cF927c # Celo Sepolia escrow
 VITE_ENABLE_BOT_MATCHES=true
+VITE_CELO_ZAR_RATE=100000
 VITE_ADMIN_KEY=demo-admin-key
 
 # backend/.env
@@ -136,6 +137,9 @@ CELO_RPC_URL=https://alfajores-forno.celo-testnet.org
 MATCH_OPERATOR_PRIVATE_KEY=0xabc123
 ADMIN_API_KEY=demo-admin-key
 PLATFORM_FEE_PERCENT=2
+ASSET_UPLOAD_BUCKET=
+ASSET_UPLOAD_REGION=
+ASSET_PUBLIC_BASE_URL=
 
 # contracts/.env
 CELO_ALFAJORES_RPC_URL=https://alfajores-forno.celo-testnet.org
@@ -143,6 +147,9 @@ CELO_MAINNET_RPC_URL=https://forno.celo.org
 CELO_SEPOLIA_RPC_URL=https://forno.celo-sepolia.celo-testnet.org
 PRIVATE_KEY=0xfeed
 CELOSCAN_API_KEY=
+
+# Common
+VITE_APP_VERSION=2025.11.21-2
 ```
 
 Never commit real secrets. Keep MiniPay keys and deployer keys inside git-ignored local env files.

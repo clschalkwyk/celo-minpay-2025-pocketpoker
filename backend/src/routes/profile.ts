@@ -54,4 +54,13 @@ export async function registerProfileRoutes(app: FastifyInstance) {
     await store.updateProfile(updated)
     return { profile: updated }
   })
+
+  app.post('/profile/reset', async (request, reply) => {
+    const body = request.body as { walletAddress?: string }
+    if (!body?.walletAddress) {
+      return reply.status(400).send({ error: 'walletAddress is required' })
+    }
+    const profile = await store.resetProfile(body.walletAddress)
+    return { profile }
+  })
 }
