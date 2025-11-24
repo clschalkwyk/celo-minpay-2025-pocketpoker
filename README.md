@@ -4,6 +4,9 @@
 
 Mobile‑first MiniPay game where two players lock a tiny stake, get 3 cards each, and snap‑reveal the winner. Includes a creator portal for community decks and a lean backend that tracks profiles, XP, ELO, missions, and a real leaderboard (top 20).
 
+## Youtube Video 
+
+https://youtu.be/kgCalrq61EM
 ---
 
 ## Gameplay Snapshot
