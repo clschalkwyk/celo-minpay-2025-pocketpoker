@@ -18,6 +18,12 @@ https://youtu.be/kgCalrq61EM
 
 ---
 
+## For This Hackathon 
+- https://www.hackersdao.com/celo-minipay-hackathon
+- URL: https://pocketpoker.co.za/
+- Set MiniPay app into developer mode and under Developer Settings, goto "Test your Mini App" and enter the PocketPoker url.
+
+
 ## How to Play
 1) Open the app inside **MiniPay** (required for gameplay).  
 2) Lobby: pick a stake, toggle PvP or bot quickplay (demo only), tap **Play now**.  
