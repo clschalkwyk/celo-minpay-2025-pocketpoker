@@ -149,6 +149,11 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     [loadDeckPreviews],
   )
 
+  const resolveViewerWallet = useCallback(
+    (fallback?: string) => lastQueuedWalletRef.current ?? address ?? profile?.walletAddress ?? fallback,
+    [address, profile?.walletAddress],
+  )
+
   const clearQueueTimeout = useCallback(() => {
     if (queueTimeoutRef.current) {
       window.clearTimeout(queueTimeoutRef.current)
@@ -177,7 +182,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
         'info',
       )
       closeMatchmaking()
-      const walletAddress = address ?? profile?.walletAddress
+      const walletAddress = resolveViewerWallet()
       if (walletAddress) {
         void Api.cancelQueue(walletAddress, expiredTicket)
           .then(() => refreshProfile())
@@ -185,7 +190,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       }
       setQueueStatus('idle')
     }, matchTimeoutMs)
-  }, [address, clearQueueTimeout, matchTimeoutMs, pushToast, refreshProfile, closeMatchmaking, profile?.walletAddress, stopQueuePolling])
+  }, [clearQueueTimeout, matchTimeoutMs, pushToast, refreshProfile, closeMatchmaking, stopQueuePolling, resolveViewerWallet])
 
   const resetQueueState = useCallback(() => {
     queueTicketRef.current = undefined
@@ -212,7 +217,9 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
         try {
           const response = await Api.getMatch(matchId)
           pollFailureRef.current = 0
-          const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, address ?? profile?.walletAddress))
+          const mapped = await withDeckPreviews(
+            mapMatchPayloadToState(response.match, { wallet: address ?? profile?.walletAddress, username: profile?.username }),
+          )
           setMatch(mapped)
           if (response.match.state === 'finished' || response.match.resultSummary) {
             stopMatchPolling()
@@ -237,7 +244,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
 
   const queueForMatch = useCallback(
     async (stake: number) => {
-      const walletAddress = realMoneyMode ? address : address ?? profile?.walletAddress
+      const walletAddress = realMoneyMode ? address : resolveViewerWallet()
       // For local/browser testing without MiniPay, allow realMoneyMode to fall back to demo if no MiniPay address.
       if (realMoneyMode && !address) {
         pushToast('MiniPay not connected, queuing with demo credits instead.', 'info')
@@ -294,12 +301,16 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
             botOpponent: allowBotMatches,
           })
         }
+        console.log('API queueDemoMatch/queueEscrowMatch response:', response);
         if (!response) {
+          console.log('queueForMatch: No response, returning undefined.');
           return undefined
         }
         void refreshProfile()
         if (response.status === 'matched') {
-          const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, address ?? profile?.walletAddress))
+          console.log('queueForMatch: Response status is "matched".');
+          const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, { wallet: walletAddress, username: profile?.username }))
+          console.log('queueForMatch: Mapped match:', mapped);
           setMatch(mapped)
           resetQueueState()
           closeMatchmaking()
@@ -307,12 +318,13 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
           pushToast('Match found! Shuffling cards...', 'success')
           return mapped
         }
+        console.log('queueForMatch: Response status is not "matched", proceeding to queue ticket.');
         queueTicketRef.current = response.ticketId
         setQueueStatus('waiting')
         startQueueTimeout()
         pushToast('Waiting for opponent...', 'info')
         const startQueuePoll = async () => {
-          const wallet = lastQueuedWalletRef.current ?? address ?? profile?.walletAddress
+          const wallet = resolveViewerWallet()
           const ticketId = queueTicketRef.current
           if (!wallet && !ticketId) return
           const fetchQueuedMatch = async () => {
@@ -321,7 +333,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
                 ? await Api.findMatchForTicket(ticketId)
                 : await Api.findMatchForWallet(wallet ?? '')
               const mapped = await withDeckPreviews(
-                mapMatchPayloadToState(res.match, wallet ?? res.match.playerA.walletAddress),
+                mapMatchPayloadToState(res.match, { wallet: wallet ?? res.match.playerA.walletAddress, username: profile?.username }),
               )
               setMatch(mapped)
               readyPingRef.current = mapped?.id
@@ -370,12 +382,13 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       profile,
       celoBalance,
       withDeckPreviews,
+      resolveViewerWallet,
     ],
   )
 
   const retryLastQueueAsDemo = useCallback(async () => {
     const stake = lastQueuedStakeRef.current
-    const walletAddress = lastQueuedWalletRef.current ?? address ?? profile?.walletAddress
+    const walletAddress = resolveViewerWallet()
     if (!stake || !walletAddress) {
       pushToast('Nothing to retry yet.', 'error')
       return undefined
@@ -393,7 +406,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       })
       void refreshProfile()
         if (response.status === 'matched') {
-          const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, address ?? profile?.walletAddress))
+          const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, { wallet: walletAddress, username: profile?.username }))
           setMatch(mapped)
           readyPingRef.current = mapped?.id
           resetQueueState()
@@ -407,25 +420,25 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
         startQueueTimeout()
         pushToast('Waiting for opponent...', 'info')
         const startQueuePoll = async () => {
-        const wallet = lastQueuedWalletRef.current ?? address ?? profile?.walletAddress
-        if (!wallet) return
-        const fetchQueuedMatch = async () => {
-          try {
-            const res = await Api.findMatchForWallet(wallet)
-            const mapped = await withDeckPreviews(mapMatchPayloadToState(res.match, wallet))
-            setMatch(mapped)
-            resetQueueState()
-            closeMatchmaking()
-            startMatchPolling(mapped!.id)
-            pushToast('Match found! Shuffling cards...', 'success')
-          } catch (err) {
-            // ignore until match exists
+          const wallet = resolveViewerWallet()
+          if (!wallet) return
+          const fetchQueuedMatch = async () => {
+            try {
+              const res = await Api.findMatchForWallet(wallet)
+              const mapped = await withDeckPreviews(mapMatchPayloadToState(res.match, { wallet, username: profile?.username }))
+              setMatch(mapped)
+              resetQueueState()
+              closeMatchmaking()
+              startMatchPolling(mapped!.id)
+              pushToast('Match found! Shuffling cards...', 'success')
+            } catch (err) {
+              // ignore until match exists
+            }
           }
+          void fetchQueuedMatch()
+          queuePollIntervalRef.current = window.setInterval(fetchQueuedMatch, matchPollIntervalMs)
         }
-        void fetchQueuedMatch()
-        queuePollIntervalRef.current = window.setInterval(fetchQueuedMatch, matchPollIntervalMs)
-      }
-      void startQueuePoll()
+        void startQueuePoll()
       return undefined
     } catch (err) {
       console.error(err)
@@ -454,10 +467,11 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     startMatchPolling,
     startQueueTimeout,
     withDeckPreviews,
+    resolveViewerWallet,
   ])
 
   const cancelMatch = useCallback(() => {
-    const walletAddress = address ?? profile?.walletAddress
+    const walletAddress = resolveViewerWallet()
     if (!match && walletAddress) {
       void Api.cancelQueue(walletAddress, queueTicketRef.current)
         .then(() => refreshProfile())
@@ -468,7 +482,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     stopQueuePolling()
     setMatch(undefined)
     closeMatchmaking()
-  }, [address, closeMatchmaking, match, resetQueueState, refreshProfile, stopMatchPolling, stopQueuePolling, profile?.walletAddress])
+  }, [closeMatchmaking, match, resetQueueState, refreshProfile, stopMatchPolling, stopQueuePolling, resolveViewerWallet])
 
   const acknowledgeResult = useCallback(
     (winnerOverride?: 'you' | 'opponent') => {
@@ -497,7 +511,9 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     }
     try {
       const response = await Api.getMatch(match.id)
-      const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, address ?? profile?.walletAddress))
+      const mapped = await withDeckPreviews(
+        mapMatchPayloadToState(response.match, { wallet: resolveViewerWallet(), username: profile?.username }),
+      )
       setMatch(mapped)
       startMatchPolling(mapped!.id)
       setConnectionStatus('polling')
@@ -508,13 +524,15 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       pushToast('Failed to re-sync match.', 'error')
       return undefined
     }
-  }, [match?.id, pushToast, startMatchPolling, withDeckPreviews])
+  }, [match?.id, pushToast, startMatchPolling, withDeckPreviews, resolveViewerWallet])
 
   const loadMatchById = useCallback(
     async (id: string, wallet?: string) => {
       try {
         const response = await Api.getMatch(id)
-        const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, wallet ?? address ?? profile?.walletAddress))
+        const mapped = await withDeckPreviews(
+          mapMatchPayloadToState(response.match, { wallet: wallet ?? resolveViewerWallet(), username: profile?.username }),
+        )
         setMatch(mapped)
         startMatchPolling(mapped!.id)
         setConnectionStatus('polling')
@@ -525,7 +543,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
         return undefined
       }
     },
-    [address, profile?.walletAddress, pushToast, startMatchPolling, withDeckPreviews],
+    [pushToast, startMatchPolling, withDeckPreviews, resolveViewerWallet],
   )
 
   useEffect(
@@ -537,7 +555,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
   )
 
   useEffect(() => {
-    const wallet = address ?? profile?.walletAddress
+    const wallet = resolveViewerWallet()
     if (!wallet || !match?.id) return
     if (match.you.ready) return
     if (readyPingRef.current === match.id) return
@@ -546,11 +564,30 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       .then((res) => {
         setMatch((prev) => {
           if (!prev || prev.id !== match.id) return prev
-          return mapMatchPayloadToState(res.match, wallet)
+          return mapMatchPayloadToState(res.match, { wallet, username: profile?.username })
         })
       })
       .catch((err) => console.error('ready ping failed', err))
-  }, [address, match?.id, match?.you.ready, profile?.walletAddress])
+  }, [match?.id, match?.you.ready, resolveViewerWallet, profile?.username])
+
+  useEffect(() => {
+    const viewerWallet = resolveViewerWallet()
+    if (!viewerWallet || !match) return
+    const viewerLower = viewerWallet.toLowerCase()
+    const youLower = match.you.walletAddress?.toLowerCase()
+    const oppLower = match.opponent.walletAddress?.toLowerCase()
+    if (youLower === viewerLower) return
+    if (oppLower === viewerLower) {
+      setMatch((prev) => {
+        if (!prev || prev.id !== match.id) return prev
+        return {
+          ...prev,
+          you: { ...prev.opponent, isYou: true },
+          opponent: { ...prev.you, isYou: false },
+        }
+      })
+    }
+  }, [match, resolveViewerWallet])
 
   const value = useMemo(
     () => ({

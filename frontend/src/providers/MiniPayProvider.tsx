@@ -71,13 +71,6 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
     setError(undefined)
     const provider = detectMiniPay()
     if (!provider) {
-      if (import.meta.env.DEV) {
-        setIsMiniPay(false)
-        setAddress('0xDemoUser')
-        setStatus('ready')
-        await refreshBalance()
-        return
-      }
       setStatus('error')
       setError('Please open this experience inside MiniPay.')
       return

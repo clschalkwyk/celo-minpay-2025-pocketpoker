@@ -34,13 +34,23 @@ export const LobbyScreen = () => {
   const playDisabled = (realMoneyMode && !miniPayReady) || (queueStatus !== 'idle' && !match?.id)
 
   const handlePlay = async () => {
+    console.log('handlePlay - function entered');
+    console.log('realMoneyMode:', realMoneyMode);
+    console.log('miniPayReady:', miniPayReady);
+    console.log('selectedStake:', selectedStake);
+    console.log('queueStatus before queueForMatch:', queueStatus);
+    console.log('match.id before queueForMatch:', match?.id);
+
     if (realMoneyMode && !miniPayReady) {
       connect().catch((err) => console.error('Failed to reconnect MiniPay', err))
       return
     }
-    const match = await queueForMatch(selectedStake)
-    if (match) navigate(`/match/${match.id}`)
+    const matchResult = await queueForMatch(selectedStake)
+    console.log('queueForMatch result:', matchResult);
+    if (matchResult) navigate(`/match/${matchResult.id}`)
   }
+
+  console.log('playDisabled:', playDisabled);
 
   const handleUseDemo = () => {
     setRealMoneyMode(false)

@@ -120,6 +120,7 @@ export type PlayerSeat = {
   id: string
   username: string
   avatarUrl: string
+  walletAddress?: string
   deckId: string
   deckPreviewUrl?: string
   cards: Card[]

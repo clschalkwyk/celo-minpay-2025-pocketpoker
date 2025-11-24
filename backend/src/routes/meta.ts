@@ -125,7 +125,7 @@ export async function registerMetaRoutes(app: FastifyInstance) {
     const missions = await store.getMissions(body.walletAddress)
     return { mission, missions }
   })
-  app.get('/leaderboard', async () => ({ leaderboard: store.getLeaderboard() }))
+  app.get('/leaderboard', async () => ({ leaderboard: await store.getLeaderboard() }))
   app.post('/credits/spend', async (request, reply) => {
     const body = request.body as { walletAddress?: string; amount?: number }
     if (!body?.walletAddress || typeof body.amount !== 'number') {

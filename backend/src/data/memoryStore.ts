@@ -279,7 +279,27 @@ export class MemoryStore {
   }
 
   getLeaderboard() {
-    return sampleLeaderboard
+    const profiles = Array.from(this.profiles.values())
+    if (profiles.length === 0) {
+      return sampleLeaderboard
+    }
+    const entries = profiles
+      .map((profile) => ({
+        id: profile.id,
+        walletAddress: profile.walletAddress,
+        username: profile.username,
+        avatarUrl: profile.avatarUrl ?? defaultAvatar(profile.walletAddress),
+        elo: profile.elo,
+        wins: profile.stats.wins,
+      }))
+      .sort((a, b) => {
+        if (b.elo !== a.elo) return b.elo - a.elo
+        if (b.wins !== a.wins) return b.wins - a.wins
+        return a.username.localeCompare(b.username)
+      })
+      .slice(0, 20)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }))
+    return entries
   }
 
   getOrCreateProfile(walletAddress: WalletAddress): UserProfile {

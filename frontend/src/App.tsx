@@ -1,3 +1,4 @@
+import { type ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { SplashScreen } from './screens/SplashScreen'
 import { LobbyScreen } from './screens/LobbyScreen'
@@ -13,23 +14,88 @@ import { AppProviders } from './providers/AppProviders'
 import { MatchmakingModal } from './components/match/MatchmakingModal'
 import { ToastStack } from './components/ui/ToastStack'
 import { DebugOverlay } from './components/debug/DebugOverlay'
+import { useMiniPay } from './hooks/useMiniPay'
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'dev-local'
+
+const RequireMiniPay = ({ children }: { children: ReactElement }) => {
+  const { status, isMiniPay } = useMiniPay()
+  if (status !== 'ready' || !isMiniPay) {
+    return <Navigate to="/" replace />
+  }
+  return children
+}
 
 const App = () => (
   <AppProviders>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<SplashScreen />} />
-        <Route path="/lobby" element={<LobbyScreen />} />
-        <Route path="/match/:id" element={<MatchScreen />} />
-        <Route path="/decks" element={<DecksScreen />} />
-        <Route path="/creator-decks" element={<CreatorDeckScreen />} />
+        <Route
+          path="/lobby"
+          element={
+            <RequireMiniPay>
+              <LobbyScreen />
+            </RequireMiniPay>
+          }
+        />
+        <Route
+          path="/match/:id"
+          element={
+            <RequireMiniPay>
+              <MatchScreen />
+            </RequireMiniPay>
+          }
+        />
+        <Route
+          path="/decks"
+          element={
+            <RequireMiniPay>
+              <DecksScreen />
+            </RequireMiniPay>
+          }
+        />
+        <Route
+          path="/creator-decks"
+          element={
+            <RequireMiniPay>
+              <CreatorDeckScreen />
+            </RequireMiniPay>
+          }
+        />
         <Route path="/admin" element={<AdminScreen />} />
-        <Route path="/profile" element={<ProfileScreen />} />
-        <Route path="/missions" element={<MissionsScreen />} />
-        <Route path="/leaderboard" element={<LeaderboardScreen />} />
-        <Route path="/rules" element={<RulesScreen />} />
+        <Route
+          path="/profile"
+          element={
+            <RequireMiniPay>
+              <ProfileScreen />
+            </RequireMiniPay>
+          }
+        />
+        <Route
+          path="/missions"
+          element={
+            <RequireMiniPay>
+              <MissionsScreen />
+            </RequireMiniPay>
+          }
+        />
+        <Route
+          path="/leaderboard"
+          element={
+            <RequireMiniPay>
+              <LeaderboardScreen />
+            </RequireMiniPay>
+          }
+        />
+        <Route
+          path="/rules"
+          element={
+            <RequireMiniPay>
+              <RulesScreen />
+            </RequireMiniPay>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <MatchmakingModal />

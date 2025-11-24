@@ -381,8 +381,42 @@ export class DynamoStore {
     return this.updateCreatorDeck(id, { status, reviewNotes })
   }
 
-  getLeaderboard() {
-    return sampleLeaderboard
+  async getLeaderboard() {
+    if (!docClient || !tableName) {
+      return sampleLeaderboard
+    }
+    const resp = await docClient.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: 'begins_with(PK, :pk) AND SK = :sk',
+        ExpressionAttributeValues: {
+          ':pk': pkProfile(''),
+          ':sk': skProfile,
+        },
+        ProjectionExpression:
+          'profile.id, profile.walletAddress, profile.username, profile.avatarUrl, profile.elo, profile.stats.wins',
+      }),
+    )
+    const items = (resp.Items ?? []).map((item) => item.profile as UserProfile)
+    if (items.length === 0) return sampleLeaderboard
+    const defaultAvatar = (seed: string) => `https://avatar.vercel.sh/${seed}`
+    const entries = items
+      .map((profile) => ({
+        id: profile.id,
+        walletAddress: profile.walletAddress,
+        username: profile.username,
+        avatarUrl: profile.avatarUrl ?? defaultAvatar(profile.walletAddress),
+        elo: profile.elo,
+        wins: profile.stats.wins,
+      }))
+      .sort((a, b) => {
+        if (b.elo !== a.elo) return b.elo - a.elo
+        if (b.wins !== a.wins) return b.wins - a.wins
+        return a.username.localeCompare(b.username)
+      })
+      .slice(0, 20)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }))
+    return entries
   }
 
   async getOrCreateProfile(walletAddress: WalletAddress): Promise<UserProfile> {

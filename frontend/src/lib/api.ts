@@ -192,14 +192,23 @@ export const Api = {
     }),
 }
 
-export const mapMatchPayloadToState = (payload: MatchPayload, viewerWallet?: string): MatchState => {
-  const viewerLower = viewerWallet?.trim().toLowerCase()
+export const mapMatchPayloadToState = (
+  payload: MatchPayload,
+  viewer?: { wallet?: string; username?: string },
+): MatchState => {
+  const viewerLower = viewer?.wallet?.trim().toLowerCase()
+  const viewerNameLower = viewer?.username?.trim().toLowerCase()
   const seats: ApiPlayer[] = [payload.playerA, payload.playerB].filter(Boolean) as ApiPlayer[]
   const youPayload =
-    seats.find((player) => player.walletAddress.toLowerCase() === viewerLower) ?? payload.playerA
+    seats.find((player) => player.walletAddress.toLowerCase() === viewerLower) ??
+    seats.find((player) => player.username.toLowerCase() === viewerNameLower) ??
+    payload.playerA
   const opponentPayload =
     seats.find((player) => player.playerId !== youPayload.playerId) ?? payload.playerB ?? payload.playerA
   const bothReady = Boolean(youPayload.ready && opponentPayload.ready)
+  const duplicateWallets =
+    youPayload.walletAddress.toLowerCase() === opponentPayload.walletAddress.toLowerCase()
+  const forceLocalResult = duplicateWallets || !viewerLower
 
   const you = toSeat(youPayload, true)
   const opponent = toSeat(opponentPayload, false)
@@ -216,11 +225,13 @@ export const mapMatchPayloadToState = (payload: MatchPayload, viewerWallet?: str
   const winnerLower = payload.winner?.toLowerCase()
   const winnerPerspective: 'you' | 'opponent' | undefined =
     hasWinner && winnerLower
-      ? winnerLower === youPayload.walletAddress.toLowerCase()
-        ? 'you'
-        : winnerLower === opponentPayload.walletAddress.toLowerCase()
-          ? 'opponent'
-          : undefined
+      ? duplicateWallets
+        ? undefined // if wallets are identical, ignore backend winner tag and let UI derive locally
+        : winnerLower === youPayload.walletAddress.toLowerCase() || winnerLower === youPayload.username.toLowerCase()
+          ? 'you'
+          : winnerLower === opponentPayload.walletAddress.toLowerCase() || winnerLower === opponentPayload.username.toLowerCase()
+            ? 'opponent'
+            : undefined
       : undefined
   const summaryFallback =
     winnerPerspective === 'you' ? 'You cleaned them out.' : 'Tough beat. Shuffle again.'
@@ -237,7 +248,7 @@ export const mapMatchPayloadToState = (payload: MatchPayload, viewerWallet?: str
     you,
     opponent,
     result:
-      winnerPerspective && hasWinner
+      winnerPerspective && hasWinner && !forceLocalResult
         ? {
             winner: winnerPerspective,
             summary,
@@ -250,6 +261,7 @@ const toSeat = (player: ApiPlayer, isYou: boolean): PlayerSeat => ({
   id: player.playerId,
   username: player.username,
   avatarUrl: `https://avatar.vercel.sh/${player.walletAddress}`,
+  walletAddress: player.walletAddress,
   deckId: player.deckId,
   deckPreviewUrl: player.deckPreviewUrl,
   cards: player.cards,

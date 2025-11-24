@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { GameTable } from '../components/match/GameTable'
 import { ResultOverlay } from '../components/match/ResultOverlay'
@@ -59,6 +59,7 @@ export const MatchScreen = () => {
   const navigate = useNavigate()
   const { match, acknowledgeResult, queueForMatch, connectionStatus, resyncMatch, loadMatchById } = useMatch()
   const { setSelectedStake } = useUIStore()
+  const [suppressAutoLoad, setSuppressAutoLoad] = useState(false)
   const [resultState, dispatch] = useReducer(reduceResultState, {
     currentMatchId: match?.id,
     revealCompletedMatchId: undefined,
@@ -88,8 +89,17 @@ export const MatchScreen = () => {
         summary: summaryForWinner ?? fallbackSummary(winnerForCountdown),
       }
     : undefined
+  const exitToLobby = useCallback(
+    (winnerOverride?: 'you' | 'opponent') => {
+      setSuppressAutoLoad(true)
+      acknowledgeResult(winnerOverride)
+      navigate('/lobby', { replace: true })
+    },
+    [acknowledgeResult, navigate],
+  )
 
   useEffect(() => {
+    if (suppressAutoLoad) return
     if (!match && id) {
       void loadMatchById(id)
       return
@@ -101,11 +111,31 @@ export const MatchScreen = () => {
     if (id && match && match.id !== id) {
       navigate(`/match/${match.id}`, { replace: true })
     }
-  }, [id, match, navigate, loadMatchById])
+  }, [id, match, navigate, loadMatchById, suppressAutoLoad])
 
   useEffect(() => {
     dispatch({ type: 'set_match', matchId })
   }, [matchId])
+
+  const autoResyncRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (autoResyncRef.current) {
+      window.clearInterval(autoResyncRef.current)
+      autoResyncRef.current = undefined
+    }
+    if (!match) return
+    const readyOrActive = allReady || match.phase === 'active' || match.result
+    if (readyOrActive) return
+    autoResyncRef.current = window.setInterval(() => {
+      void resyncMatch()
+    }, 3000)
+    return () => {
+      if (autoResyncRef.current) {
+        window.clearInterval(autoResyncRef.current)
+        autoResyncRef.current = undefined
+      }
+    }
+  }, [match, allReady, resyncMatch])
 
   useEffect(() => {
     if (!winnerForCountdown || !revealComplete) {
@@ -217,10 +247,7 @@ export const MatchScreen = () => {
         )}
         <SecondaryButton
           onClick={() => {
-            if (match) {
-              acknowledgeResult(match.result?.winner)
-            }
-            navigate('/lobby')
+            exitToLobby(match?.result?.winner)
           }}
           className="px-5"
         >
@@ -247,8 +274,7 @@ export const MatchScreen = () => {
             })
           }}
           onBack={() => {
-            acknowledgeResult(overlayMatch.result?.winner)
-            navigate('/lobby')
+            exitToLobby(overlayMatch.result?.winner)
           }}
         />
       )}

@@ -31,7 +31,7 @@ export interface DataStore {
   }): Promise<CreatorDeckSubmission>
   updateCreatorDeck(id: string, updates: Partial<CreatorDeckSubmission>): Promise<CreatorDeckSubmission | undefined>
   updateCreatorDeckStatus(id: string, status: CreatorDeckSubmission['status'], reviewNotes?: string): Promise<CreatorDeckSubmission | undefined>
-  getLeaderboard(): LeaderboardEntry[]
+  getLeaderboard(): Promise<LeaderboardEntry[]>
   getOrCreateProfile(walletAddress: WalletAddress): Promise<UserProfile>
   updateProfile(profile: UserProfile): Promise<void>
   resetProfile(walletAddress: WalletAddress): Promise<UserProfile>
@@ -93,7 +93,7 @@ class MemoryStoreAdapter implements DataStore {
   }
 
   getLeaderboard() {
-    return this.backing.getLeaderboard()
+    return Promise.resolve(this.backing.getLeaderboard())
   }
 
   getOrCreateProfile(walletAddress: WalletAddress) {

@@ -28,7 +28,7 @@ const basePayload: MatchPayload = {
 
 describe('mapMatchPayloadToState', () => {
   it('treats the viewer wallet as the local player even when they are playerB', () => {
-    const state = mapMatchPayloadToState(basePayload, '0xplayertwo')
+    const state = mapMatchPayloadToState(basePayload, { wallet: '0xplayertwo' })
     expect(state.you.username).toBe('Player Two')
     expect(state.opponent.username).toBe('Player One')
     expect(state.result?.winner).toBe('you')
@@ -37,7 +37,7 @@ describe('mapMatchPayloadToState', () => {
 
   it('keeps perspective when the viewer is playerA and loses', () => {
     const losingPayload = { ...basePayload, winner: '0xPlayerTwo' }
-    const state = mapMatchPayloadToState(losingPayload, '0xplayerone')
+    const state = mapMatchPayloadToState(losingPayload, { wallet: '0xplayerone' })
     expect(state.you.username).toBe('Player One')
     expect(state.opponent.username).toBe('Player Two')
     expect(state.result?.winner).toBe('opponent')
@@ -53,7 +53,7 @@ describe('mapMatchPayloadToState', () => {
       playerA: { ...basePayload.playerA, ready: true },
       playerB: { ...basePayload.playerB, ready: false },
     }
-    const state = mapMatchPayloadToState(notReadyPayload, '0xplayerone')
+    const state = mapMatchPayloadToState(notReadyPayload, { wallet: '0xplayerone' })
     expect(state.phase).toBe('ready')
     expect(state.you.ready).toBe(true)
     expect(state.opponent.ready).toBe(false)
