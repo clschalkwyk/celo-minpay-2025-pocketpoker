@@ -142,6 +142,7 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
             ready={match.you.ready}
             isWinner={youWin}
             deckId={match.you.deckId}
+            deckPreviewUrl={match.you.deckPreviewUrl}
           />
         </div>
         <PotDisplay stake={match.stake} />
@@ -153,6 +154,7 @@ export const GameTable = ({ match, onRevealComplete }: GameTableProps) => {
             ready={match.opponent.ready}
             isWinner={oppWin}
             deckId={match.opponent.deckId}
+            deckPreviewUrl={match.opponent.deckPreviewUrl}
           />
         </div>
         {match.opponent.ready && !opponentRevealed && (

@@ -72,6 +72,7 @@ export type ApiPlayer = {
   walletAddress: string
   username: string
   deckId: string
+  deckPreviewUrl?: string
   ready: boolean
   cards: Card[]
 }
@@ -173,23 +174,60 @@ export const Api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  cancelQueue: (walletAddress: string) =>
+  cancelQueue: (walletAddress: string, ticketId?: string) =>
     request<{ cancelled: boolean }>('/match/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ walletAddress, ticketId }),
+    }),
+  queueStatus: () => request<{ status: { stake: number; count: number }[] }>('/match/queue-status'),
+  getMatch: (id: string) => request<{ match: MatchPayload }>(`/match/${id}`),
+  findMatchForWallet: (walletAddress: string) =>
+    request<{ match: MatchPayload }>(`/match/by-wallet/${encodeURIComponent(walletAddress)}`),
+  findMatchForTicket: (ticketId: string) =>
+    request<{ match: MatchPayload }>(`/match/by-ticket/${encodeURIComponent(ticketId)}`),
+  readyPing: (matchId: string, walletAddress: string) =>
+    request<{ match: MatchPayload }>(`/match/${matchId}/ready`, {
       method: 'POST',
       body: JSON.stringify({ walletAddress }),
     }),
-  getMatch: (id: string) => request<{ match: MatchPayload }>(`/match/${id}`),
 }
 
-export const mapMatchPayloadToState = (payload: MatchPayload): MatchState => {
-  const you = toSeat(payload.playerA, true)
-  const opponent = toSeat(payload.playerB, false)
+export const mapMatchPayloadToState = (payload: MatchPayload, viewerWallet?: string): MatchState => {
+  const viewerLower = viewerWallet?.trim().toLowerCase()
+  const seats: ApiPlayer[] = [payload.playerA, payload.playerB].filter(Boolean) as ApiPlayer[]
+  const youPayload =
+    seats.find((player) => player.walletAddress.toLowerCase() === viewerLower) ?? payload.playerA
+  const opponentPayload =
+    seats.find((player) => player.playerId !== youPayload.playerId) ?? payload.playerB ?? payload.playerA
+  const bothReady = Boolean(youPayload.ready && opponentPayload.ready)
+
+  const you = toSeat(youPayload, true)
+  const opponent = toSeat(opponentPayload, false)
   const hasWinner = Boolean(payload.winner)
   const phase: MatchState['phase'] =
-    hasWinner || payload.state === 'finished' ? 'result' : payload.phase ?? 'active'
-  const winnerPerspective = hasWinner && payload.winner === payload.playerA.walletAddress ? 'you' : 'opponent'
+    hasWinner || payload.state === 'finished'
+      ? 'result'
+      : payload.phase
+        ? payload.phase
+        : bothReady
+          ? 'active'
+          : 'ready'
+
+  const winnerLower = payload.winner?.toLowerCase()
+  const winnerPerspective: 'you' | 'opponent' | undefined =
+    hasWinner && winnerLower
+      ? winnerLower === youPayload.walletAddress.toLowerCase()
+        ? 'you'
+        : winnerLower === opponentPayload.walletAddress.toLowerCase()
+          ? 'opponent'
+          : undefined
+      : undefined
   const summaryFallback =
     winnerPerspective === 'you' ? 'You cleaned them out.' : 'Tough beat. Shuffle again.'
+  const summary =
+    winnerPerspective && hasWinner
+      ? summaryFallback
+      : payload.resultSummary ?? summaryFallback
 
   return {
     id: payload.id,
@@ -198,12 +236,13 @@ export const mapMatchPayloadToState = (payload: MatchPayload): MatchState => {
     phase,
     you,
     opponent,
-    result: hasWinner
-      ? {
-          winner: winnerPerspective,
-          summary: payload.resultSummary ?? summaryFallback,
-        }
-      : undefined,
+    result:
+      winnerPerspective && hasWinner
+        ? {
+            winner: winnerPerspective,
+            summary,
+          }
+        : undefined,
   }
 }
 
@@ -212,6 +251,7 @@ const toSeat = (player: ApiPlayer, isYou: boolean): PlayerSeat => ({
   username: player.username,
   avatarUrl: `https://avatar.vercel.sh/${player.walletAddress}`,
   deckId: player.deckId,
+  deckPreviewUrl: player.deckPreviewUrl,
   cards: player.cards,
   ready: player.ready,
   isYou,

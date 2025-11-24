@@ -235,6 +235,7 @@ export async function registerMetaRoutes(app: FastifyInstance) {
     const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status')
     const hasNsfw = Object.prototype.hasOwnProperty.call(body, 'nsfwFlag')
     const hasNotes = Object.prototype.hasOwnProperty.call(body, 'reviewNotes')
+    const hasPrice = Object.prototype.hasOwnProperty.call(body, 'price')
     const query = request.query as { status?: string; nsfwFlag?: string; reviewNotes?: string }
     const adminKeyUsed = (request.headers['x-admin-key'] ?? request.headers['X-Admin-Key']) as string | undefined
     const desiredStatus = (hasStatus ? (body.status as CreatorDeckSubmission['status']) : query?.status?.trim()) as
@@ -243,8 +244,10 @@ export async function registerMetaRoutes(app: FastifyInstance) {
     const nsfwFlag =
       hasNsfw ? Boolean(body.nsfwFlag) : query?.nsfwFlag === 'true' ? true : query?.nsfwFlag === 'false' ? false : undefined
     const reviewNotes = hasNotes ? (body.reviewNotes as string) : query?.reviewNotes
-    if (!desiredStatus) {
-      return reply.status(400).send({ error: 'status is required' })
+    const desiredPrice = hasPrice ? Number(body.price) : undefined
+
+    if (!desiredStatus && !hasPrice) {
+      return reply.status(400).send({ error: 'status or price is required' })
     }
 
     request.log.info(
@@ -254,6 +257,7 @@ export async function registerMetaRoutes(app: FastifyInstance) {
         desiredStatus: hasStatus ? (body.status as CreatorDeckSubmission['status']) : undefined,
         nsfwFlag: hasNsfw ? Boolean(body.nsfwFlag) : undefined,
         reviewNotes: hasNotes ? (body.reviewNotes as string) : undefined,
+        desiredPrice,
         adminKeyUsed,
       },
       'creator-deck.patch.request',
@@ -265,6 +269,7 @@ export async function registerMetaRoutes(app: FastifyInstance) {
       nsfwFlag: hasNsfw ? Boolean(body.nsfwFlag) : undefined,
       reviewedAt: hasStatus ? Date.now() : undefined,
       reviewedBy: hasStatus ? adminKeyUsed : undefined,
+      price: desiredPrice, // Pass price to update
     })
     if (!submission) {
       request.log.error({ id: params.id }, 'creator-deck.patch.not_found')
@@ -293,6 +298,7 @@ export async function registerMetaRoutes(app: FastifyInstance) {
       status: desiredStatus ?? submission.status ?? 'pending',
       nsfwFlag: typeof submission.nsfwFlag === 'boolean' ? submission.nsfwFlag : hasNsfw ? Boolean(body.nsfwFlag) : false,
       reviewNotes: submission.reviewNotes ?? (hasNotes ? (body.reviewNotes as string) : undefined),
+      price: submission.price ?? desiredPrice, // Reflect the updated price
     }
 
     request.log.info(
@@ -301,6 +307,7 @@ export async function registerMetaRoutes(app: FastifyInstance) {
         finalStatus: responseSubmission.status,
         nsfwFlag: responseSubmission.nsfwFlag,
         reviewNotes: responseSubmission.reviewNotes,
+        price: responseSubmission.price,
       },
       'creator-deck.patch.response',
     )
@@ -318,8 +325,14 @@ export async function registerMetaRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'walletAddress and deckId are required' })
     }
     const profile = await store.getOrCreateProfile(body.walletAddress)
+    const deck = store.getDecks().find((item) => item.id === body.deckId)
+    const isCreator = deck?.creatorWallet?.toLowerCase() === body.walletAddress.toLowerCase()
     if (!profile.unlockedDeckIds.includes(body.deckId)) {
-      return reply.status(400).send({ error: 'Deck not unlocked' })
+      if (isCreator) {
+        profile.unlockedDeckIds.push(body.deckId)
+      } else {
+        return reply.status(400).send({ error: 'Deck not unlocked' })
+      }
     }
     profile.activeDeckId = body.deckId
     await store.updateProfile(profile)

@@ -21,6 +21,8 @@ export const DecksScreen = () => {
   const { address, status, sendStake } = useMiniPay()
   const { pushToast } = useUIStore()
   const [purchasingDeckId, setPurchasingDeckId] = useState<string | null>(null)
+  const [equippingDeckId, setEquippingDeckId] = useState<string | null>(null)
+  const [activeOverride, setActiveOverride] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     let mounted = true
@@ -30,7 +32,8 @@ export const DecksScreen = () => {
         if (!mounted) return
         const normalized = (res?.decks ?? []).map((deck) => {
           const priceValue = typeof deck.price === 'number' ? deck.price : Number(deck.price ?? NaN)
-          const price = Number.isFinite(priceValue) ? priceValue : undefined
+          const isCreatorDrop = Boolean(deck.creatorWallet)
+          const price = Number.isFinite(priceValue) ? priceValue : isCreatorDrop ? 1 : undefined
           return {
             ...deck,
             price,
@@ -62,7 +65,12 @@ export const DecksScreen = () => {
     Api.fetchCreatorDecks()
       .then((res) => {
         if (!mounted) return
-        setCreatorDecks(res.submissions ?? [])
+        const normalized = (res.submissions ?? []).map((submission) => ({
+          ...submission,
+          price: submission.price ?? 1,
+          status: submission.status ?? 'pending',
+        }))
+        setCreatorDecks(normalized)
         setCreatorLoading(false)
       })
       .catch((err) => {
@@ -75,12 +83,39 @@ export const DecksScreen = () => {
     }
   }, [])
 
-  const ownedDeckIds = profile?.unlockedDeckIds ?? []
-  const activeDeckId = profile?.activeDeckId
+  const userWallet = profile?.walletAddress?.toLowerCase()
+  const ownedCreatorIds = userWallet
+    ? creatorDecks
+        .filter(
+          (deck) =>
+            deck.status === 'approved' &&
+            deck.creatorWallet?.toLowerCase() === userWallet,
+        )
+        .map((deck) => deck.id)
+    : []
+  const ownedFromDeckList = userWallet
+    ? decks
+        .filter((deck) => deck.creatorWallet?.toLowerCase() === userWallet)
+        .map((deck) => deck.id)
+    : []
+  const ownedDeckIds = new Set([...(profile?.unlockedDeckIds ?? []), ...ownedCreatorIds, ...ownedFromDeckList])
+  useEffect(() => {
+    if (profile?.activeDeckId) {
+      setActiveOverride(profile.activeDeckId)
+    }
+  }, [profile?.activeDeckId])
+
+  const activeDeckId = activeOverride ?? profile?.activeDeckId
   const canEquip = Boolean(profile)
 
   const handlePurchase = async (deck: DeckTheme) => {
     if (!deck.price) return
+    const isOwnSubmission =
+      userWallet && deck.creatorWallet && deck.creatorWallet.toLowerCase() === userWallet
+    if (isOwnSubmission) {
+      pushToast('You already own this creator drop.', 'error')
+      return
+    }
     if (!address || status !== 'ready') {
       pushToast('Connect MiniPay to buy creator skins.', 'error')
       return
@@ -98,6 +133,54 @@ export const DecksScreen = () => {
     } finally {
       setPurchasingDeckId(null)
     }
+  }
+
+  const handleEquipDeck = async (deck: { id: string; creatorWallet?: string; status?: string }) => {
+    if (!profile?.walletAddress) {
+      pushToast('Sign in to equip decks.', 'error')
+      return
+    }
+    const isOwnSubmission = deck.creatorWallet && userWallet && deck.creatorWallet.toLowerCase() === userWallet
+    const alreadyOwned = ownedDeckIds.has(deck.id)
+    try {
+      setEquippingDeckId(deck.id)
+      if (!alreadyOwned) {
+        if (isOwnSubmission) {
+          await Api.unlockDeck({ walletAddress: profile.walletAddress, deckId: deck.id })
+        } else {
+          pushToast('Purchase this creator drop to unlock it first.', 'error')
+          return
+        }
+      }
+      if (profile.walletAddress) {
+        await Api.unlockDeck({ walletAddress: profile.walletAddress, deckId: deck.id })
+      }
+      await equipDeck(deck.id)
+      await refreshProfile()
+      setActiveOverride(deck.id)
+      pushToast('Deck equipped!', 'success')
+    } catch (err) {
+      console.error(err)
+      pushToast((err as Error).message || 'Failed to equip deck', 'error')
+    } finally {
+      setEquippingDeckId(null)
+    }
+  }
+
+  const handlePurchaseCreator = async (submission: CreatorDeckSubmission) => {
+    const deck: DeckTheme = {
+      id: submission.id,
+      name: submission.deckName,
+      creatorName: submission.creatorName,
+      creatorWallet: submission.creatorWallet,
+      price: submission.price ?? 1,
+      rarity: submission.rarity ?? 'common',
+      description: submission.description ?? 'Limited drop deck skin.',
+      previewImageUrl: submission.previewImageUrl ?? '/deck_1.jpg',
+      unlockCondition: 'Creator drop',
+      status: 'live',
+    }
+    await handlePurchase(deck)
   }
 
   return (
@@ -145,9 +228,9 @@ export const DecksScreen = () => {
                 <DeckCard
                   key={deck.id}
                   deck={deck}
-                  owned={ownedDeckIds.includes(deck.id)}
+                  owned={ownedDeckIds.has(deck.id)}
                   active={activeDeckId === deck.id}
-                  onEquip={canEquip ? (id) => equipDeck(id) : undefined}
+                  onEquip={canEquip ? () => handleEquipDeck(deck) : undefined}
                   onPurchase={canEquip ? handlePurchase : undefined}
                   purchaseDisabled={purchasingDeckId === deck.id}
                 />
@@ -167,15 +250,29 @@ export const DecksScreen = () => {
           </div>
           {creatorLoading ? (
             <p className="text-sm text-gray-400">Loading creator entries...</p>
-          ) : creatorDecks.filter((deck) => deck.status !== 'rejected').length === 0 ? (
+          ) : creatorDecks.filter((deck) => deck.status === 'approved').length === 0 ? (
             <p className="text-sm text-gray-400">No submissions yet. Share your art via the creator portal.</p>
           ) : (
             <div className="grid gap-4">
               {creatorDecks
-                .filter((deck) => deck.status !== 'rejected')
-                .map((deck) => (
-                  <CreatorDeckPreviewCard key={deck.id} submission={{ ...deck, status: deck.status ?? 'pending' }} />
-                ))}
+                .filter((deck) => deck.status === 'approved')
+                .map((deck) => {
+                  const isCreator = deck.creatorWallet?.toLowerCase() === userWallet
+                  const owned = ownedDeckIds.has(deck.id) || isCreator
+                  return (
+                    <CreatorDeckPreviewCard
+                      key={deck.id}
+                      submission={{ ...deck, status: deck.status ?? 'pending' }}
+                      owned={owned}
+                      isCreator={isCreator}
+                      active={activeDeckId === deck.id}
+                      onEquip={canEquip ? () => handleEquipDeck(deck) : undefined}
+                      equipping={equippingDeckId === deck.id}
+                      onPurchase={canEquip && !isCreator ? () => handlePurchaseCreator(deck) : undefined}
+                      purchaseDisabled={purchasingDeckId === deck.id}
+                    />
+                  )
+                })}
             </div>
           )}
         </section>

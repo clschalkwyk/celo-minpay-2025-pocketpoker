@@ -53,10 +53,13 @@ export type CardProps = {
   ready?: boolean
   isWinner?: boolean
   deckId?: string
+  deckPreviewUrl?: string
 }
 
-export const CardTile = ({ card, revealed = true, ready, isWinner, deckId }: CardProps) => {
-  const theme = deckSkins[deckId ?? ''] ?? deckSkins.default
+export const CardTile = ({ card, revealed = true, ready, isWinner, deckId, deckPreviewUrl }: CardProps) => {
+  const baseTheme = deckSkins[deckId ?? ''] ?? (deckId?.includes('creator') ? deckSkins['deck-creator'] : deckSkins.default)
+  const texture = deckPreviewUrl ?? baseTheme.texture
+  const theme = { ...baseTheme, texture }
   return (
     <div
       className={clsx(
@@ -66,15 +69,15 @@ export const CardTile = ({ card, revealed = true, ready, isWinner, deckId }: Car
         isWinner && 'scale-105',
       )}
       style={{
-        backgroundImage: theme.texture ? undefined : theme.background,
+        backgroundImage: theme.background,
         borderColor: isWinner ? theme.border : `${theme.border}66`,
         boxShadow: isWinner ? `0 0 20px ${theme.glow}` : undefined,
       }}
     >
-      {theme.texture && (
+      {texture && (
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${theme.texture})` }}
+          style={{ backgroundImage: `url(${texture})` }}
         ></div>
       )}
       <div className={clsx('absolute inset-0 bg-black/30 transition', revealed ? 'opacity-40' : 'opacity-70')} />

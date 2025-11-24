@@ -6,6 +6,9 @@
 - SOLID
 - ATOMIC DESIGN (for frontend)
 
+## MCP Tool
+- Touchgraph (TOUCHGRAPH_HOWTO.md)
+
 ## Project Structure & Module Organization
 - Docs-first today. Key files: `docs/PROJECT_BRIEF.md`, `docs/UI_SPEC.md`, `docs/STYLE_GUIDE.md`.
 - Preferred landing spots:

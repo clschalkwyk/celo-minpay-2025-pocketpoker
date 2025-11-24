@@ -27,6 +27,7 @@ export interface DataStore {
     rarity: DeckTheme['rarity']
     description: string
     previewImageUrl: string
+    price?: number // Added price field
   }): Promise<CreatorDeckSubmission>
   updateCreatorDeck(id: string, updates: Partial<CreatorDeckSubmission>): Promise<CreatorDeckSubmission | undefined>
   updateCreatorDeckStatus(id: string, status: CreatorDeckSubmission['status'], reviewNotes?: string): Promise<CreatorDeckSubmission | undefined>
@@ -46,8 +47,15 @@ export interface DataStore {
   enqueue(ticket: QueueTicket): Promise<void>
   dequeuePair(stake: number): Promise<QueueTicket[] | undefined>
   clearTicket(walletAddress: WalletAddress): Promise<boolean>
+  getQueueStatus(): Promise<{ stake: number; count: number }[]>
   reserveCreditHold(ticketId: string, walletAddress: WalletAddress, amount: number): Promise<void>
+  refundCreditHold(ticketId: string): Promise<boolean>
   getMatch(matchId: string): Promise<Match | undefined>
+  findMatchForWallet(walletAddress: WalletAddress): Promise<Match | undefined>
+  markPlayerReady(matchId: string, walletAddress: WalletAddress): Promise<Match | undefined>
+  mapTicketsToMatch(ticketIds: string[], matchId: string): Promise<void>
+  findMatchForTicket(ticketId: string): Promise<Match | undefined>
+  clearTicketMatch(ticketId: string): Promise<void>
   saveMatch(match: Match): Promise<void>
   createMatch(stake: number, playerA: UserProfile, playerB: UserProfile): Promise<Match>
   reset(): Promise<void>
@@ -67,9 +75,11 @@ class MemoryStoreAdapter implements DataStore {
   submitCreatorDeck(payload: {
     deckName: string
     creatorName: string
+    creatorWallet?: WalletAddress
     rarity: DeckTheme['rarity']
     description: string
     previewImageUrl: string
+    price?: number
   }) {
     return Promise.resolve(this.backing.submitCreatorDeck(payload))
   }
@@ -146,12 +156,40 @@ class MemoryStoreAdapter implements DataStore {
     return Promise.resolve(this.backing.clearTicket(walletAddress))
   }
 
+  getQueueStatus() {
+    return Promise.resolve(this.backing.getQueueStatus())
+  }
+
   async reserveCreditHold(ticketId: string, walletAddress: WalletAddress, amount: number) {
     this.backing.reserveCreditHold(ticketId, walletAddress, amount)
   }
 
+  refundCreditHold(ticketId: string) {
+    return Promise.resolve(this.backing.refundCreditHold(ticketId))
+  }
+
   getMatch(matchId: string) {
     return Promise.resolve(this.backing.getMatch(matchId))
+  }
+
+  findMatchForWallet(walletAddress: WalletAddress) {
+    return Promise.resolve(this.backing.findMatchForWallet(walletAddress))
+  }
+
+  markPlayerReady(matchId: string, walletAddress: WalletAddress) {
+    return Promise.resolve(this.backing.markPlayerReady(matchId, walletAddress))
+  }
+
+  mapTicketsToMatch(ticketIds: string[], matchId: string) {
+    return Promise.resolve(this.backing.mapTicketsToMatch(ticketIds, matchId))
+  }
+
+  findMatchForTicket(ticketId: string) {
+    return Promise.resolve(this.backing.findMatchForTicket(ticketId))
+  }
+
+  clearTicketMatch(ticketId: string) {
+    return Promise.resolve(this.backing.clearTicketMatch(ticketId))
   }
 
   async saveMatch(match: Match) {
@@ -167,7 +205,8 @@ class MemoryStoreAdapter implements DataStore {
   }
 }
 
-const shouldUseDynamo = process.env.USE_DYNAMO_STORE === 'true' && Boolean(process.env.DYNAMO_TABLE_NAME)
+const shouldUseDynamo =
+  process.env.NODE_ENV !== 'test' && process.env.USE_DYNAMO_STORE === 'true' && Boolean(process.env.DYNAMO_TABLE_NAME)
 
 const store: DataStore = shouldUseDynamo ? new DynamoStore() : new MemoryStoreAdapter()
 

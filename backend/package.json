@@ -11,13 +11,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/aws-lambda": "^4.1.0",
-    "@fastify/cors": "^9.0.1",
-    "@fastify/websocket": "^10.0.1",
     "@aws-sdk/client-dynamodb": "^3.684.0",
     "@aws-sdk/client-s3": "^3.684.0",
     "@aws-sdk/lib-dynamodb": "^3.684.0",
     "@aws-sdk/s3-request-presigner": "^3.684.0",
+    "@fastify/aws-lambda": "^4.1.0",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/websocket": "^10.0.1",
+    "dotenv": "^16.6.1",
     "fastify": "^4.26.2",
     "fastify-plugin": "^4.5.1",
     "nanoid": "^5.0.7"

@@ -38,6 +38,15 @@ export const ProfileScreen = () => {
 
   const avatarOptions = useMemo(() => avatarSeeds.map((seed) => buildAvatarUrl(seed)), [])
 
+  const handleRealMoneyToggle = (next: boolean) => {
+    if (next && (miniPay.status !== 'ready' || !miniPay.isMiniPay)) {
+      pushToast('Connect MiniPay before enabling real-money stakes.', 'error')
+      return
+    }
+    setRealMoneyMode(next)
+    pushToast(next ? 'Real-money staking enabled' : 'Demo credits enabled', 'info')
+  }
+
   if (loading || !profile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-pp-bg text-white">
@@ -150,7 +159,7 @@ export const ProfileScreen = () => {
               className={clsx(
                 'flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition',
                 realMoneyMode ? 'border-pp-primary bg-pp-primary/10' : 'border-white/20 bg-white/5',
-                (miniPay.status !== 'ready' || !miniPay.isMiniPay) && 'cursor-not-allowed opacity-40',
+                (miniPay.status !== 'ready' || !miniPay.isMiniPay) && !realMoneyMode && 'cursor-not-allowed opacity-40',
               )}
             >
               <span className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-300">
@@ -168,8 +177,8 @@ export const ProfileScreen = () => {
                 type="checkbox"
                 className="sr-only"
                 checked={realMoneyMode}
-                disabled={miniPay.status !== 'ready' || !miniPay.isMiniPay}
-                onChange={(event) => setRealMoneyMode(event.target.checked)}
+                disabled={miniPay.status !== 'ready' || !miniPay.isMiniPay ? !realMoneyMode : false}
+                onChange={(event) => handleRealMoneyToggle(event.target.checked)}
               />
             </label>
           </div>

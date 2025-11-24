@@ -41,4 +41,28 @@ describe('deck routes', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().profile.activeDeckId).toBe('deck-creator')
   })
+
+  it('auto-unlocks and equips creator-owned decks', async () => {
+    const walletAddress = '0xCREATOR'
+    await store.reset()
+    const submission = await store.submitCreatorDeck({
+      deckName: 'Creator Owned',
+      creatorName: 'Creator',
+      creatorWallet: walletAddress,
+      rarity: 'rare',
+      description: 'Deck from creator wallet',
+      previewImageUrl: '/deck.jpg',
+    })
+    await store.updateCreatorDeckStatus(submission.id, 'approved')
+    await store.getOrCreateProfile(walletAddress)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/decks/equip',
+      payload: { walletAddress, deckId: submission.id },
+    })
+    expect(res.statusCode).toBe(200)
+    const profile = res.json().profile
+    expect(profile.activeDeckId).toBe(submission.id)
+    expect(profile.unlockedDeckIds).toContain(submission.id)
+  })
 })

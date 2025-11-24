@@ -1,10 +1,11 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useState, useEffect, type ChangeEvent, type FormEvent } from 'react'
 import { ArrowLeft, CheckCircle2, Upload, AlertTriangle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Api } from '../lib/api'
 import type { CreatorDeckSubmission, DeckTheme } from '../types'
 import { PrimaryButton } from '../components/ui/PrimaryButton'
 import { useUIStore } from '../state/UIStoreProvider'
+import { useProfile } from '../hooks/useProfile'
 
 type CreatorDeckForm = {
   deckName: string
@@ -32,7 +33,7 @@ const statusBadges: Record<CreatorDeckSubmission['status'], { label: string; cla
   rejected: { label: 'Needs revision', className: 'bg-red-500/10 text-red-200 border border-red-400/40' },
 }
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 4.4 * 1024 * 1024;
 const normalizeSubmission = (submission: CreatorDeckSubmission): CreatorDeckSubmission => ({
   ...submission,
   status: submission.status ?? 'pending',
@@ -46,6 +47,7 @@ const normalizeSubmission = (submission: CreatorDeckSubmission): CreatorDeckSubm
 export const CreatorDeckScreen = () => {
   const navigate = useNavigate()
   const { pushToast } = useUIStore()
+  const { profile } = useProfile()
   const [form, setForm] = useState<CreatorDeckForm>(blankForm)
   const [previewDataUrl, setPreviewDataUrl] = useState<string>()
   const [previewFileName, setPreviewFileName] = useState<string>()
@@ -60,7 +62,13 @@ export const CreatorDeckScreen = () => {
     Api.fetchCreatorDecks()
       .then((res) => {
         if (!mounted) return
-        const normalized = (res.submissions ?? []).map(normalizeSubmission)
+        const normalized = (res.submissions ?? [])
+          .map(normalizeSubmission)
+          .filter(
+            (s) =>
+              s.status === 'approved' ||
+              (s.status === 'pending' && s.creatorWallet === profile?.walletAddress),
+          )
         setSubmissions(normalized)
         setLoading(false)
       })
@@ -73,18 +81,19 @@ export const CreatorDeckScreen = () => {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [profile?.walletAddress])
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = event.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    setForm((prev: CreatorDeckForm) => ({ ...prev, [name]: value }))
   }
 
   const handlePreviewFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
     if (file.size > MAX_UPLOAD_BYTES) {
-      pushToast('Image too large. Please keep under ~5MB or compress before uploading.', 'error')
+      pushToast('Image too large. Please keep under ~4.4MB or compress before uploading.', 'error')
+      alert('Image too large. Please keep under ~4.4MB or compress before uploading.')
       return
     }
     setPreviewFile(file)
@@ -105,8 +114,8 @@ export const CreatorDeckScreen = () => {
       pushToast('Add a preview image (upload a file or paste a URL).', 'error')
       return
     }
-    if (dataUrl && dataUrl.length > MAX_UPLOAD_BYTES * 1.5) {
-      pushToast('Preview too large. Please compress below 5MB.', 'error')
+    if (dataUrl && dataUrl.length > MAX_UPLOAD_BYTES * 1.4) {
+      pushToast('Preview too large. Please compress below 4.4MB.', 'error')
       return
     }
     const payload = {
@@ -127,7 +136,7 @@ export const CreatorDeckScreen = () => {
     setSubmitting(true)
     try {
       const res = await Api.submitCreatorDeck(payload)
-      setSubmissions((prev) => [normalizeSubmission(res.submission), ...prev])
+      setSubmissions((prev: CreatorDeckSubmission[]) => [normalizeSubmission(res.submission), ...prev])
       setForm(blankForm)
       setPreviewDataUrl(undefined)
       setPreviewFileName(undefined)

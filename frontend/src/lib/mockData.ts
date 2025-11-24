@@ -163,6 +163,7 @@ const createSeat = (opts: Partial<PlayerSeat>): PlayerSeat => ({
   username: opts.username ?? 'Anonymous',
   avatarUrl: opts.avatarUrl ?? 'https://avatar.vercel.sh/guest',
   deckId: opts.deckId ?? deckThemes[0]!.id,
+  deckPreviewUrl: opts.deckPreviewUrl ?? deckThemes.find((deck) => deck.id === opts.deckId)?.previewImage,
   cards: opts.cards ?? dealCards(),
   ready: opts.ready ?? false,
   isYou: opts.isYou ?? false,

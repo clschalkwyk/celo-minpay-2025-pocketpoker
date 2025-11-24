@@ -12,7 +12,9 @@ import type {
   UserProfile,
   WalletAddress,
 } from '../types.js'
-import { DEMO_DECK_PRICE, sampleDecks, seededCreatorDecks } from './deckData.js'
+import { sampleDecks, seededCreatorDecks } from './deckData.js'
+
+const CREATOR_DROP_PRICE = 1
 
 const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz', 10)
 const resolveDataDir = () => {
@@ -108,9 +110,18 @@ export class MemoryStore {
   private creatorDecks = new Map<string, CreatorDeckSubmission>()
   private creditHolds = new Map<string, { walletAddress: WalletAddress; amount: number }>()
   private purchases: DeckPurchase[] = []
+  private walletMatchIndex = new Map<WalletAddress, string>()
+  private ticketMatchIndex = new Map<string, string>()
 
   constructor() {
     this.loadPersistedState()
+  }
+
+  private getDeckPreview(deckId: string) {
+    const deck = this.getDecks().find((item) => item.id === deckId)
+    if (deck?.previewImageUrl) return deck.previewImageUrl
+    if (deckId.includes('creator')) return '/deck_5.jpg'
+    return undefined
   }
 
   private loadPersistedState() {
@@ -161,8 +172,9 @@ export class MemoryStore {
         previewImageUrl: submission.previewImageUrl,
         unlockCondition: 'Creator submission',
         creatorName: submission.creatorName,
-        status: 'live_soon',
-        price: DEMO_DECK_PRICE,
+        creatorWallet: submission.creatorWallet,
+        status: 'live',
+        price: submission.price ?? CREATOR_DROP_PRICE,
       }))
     return [...sampleDecks, ...creatorDeckThemes]
   }
@@ -207,7 +219,13 @@ export class MemoryStore {
   }
 
   listCreatorDecks() {
-    return Array.from(this.creatorDecks.values()).sort((a, b) => b.submittedAt - a.submittedAt)
+    return Array.from(this.creatorDecks.values())
+      .map((submission) => ({
+        ...submission,
+        status: submission.status ?? 'pending',
+        price: submission.price ?? CREATOR_DROP_PRICE,
+      }))
+      .sort((a, b) => b.submittedAt - a.submittedAt)
   }
 
   submitCreatorDeck(payload: {
@@ -217,6 +235,7 @@ export class MemoryStore {
     rarity: DeckTheme['rarity']
     description: string
     previewImageUrl: string
+    price?: number // Added price to payload
   }) {
     const submission: CreatorDeckSubmission = {
       id: `creator-${nanoid()}`,
@@ -229,6 +248,7 @@ export class MemoryStore {
       status: 'pending',
       submittedAt: Date.now(),
       nsfwFlag: false,
+      price: payload.price ?? CREATOR_DROP_PRICE,
     }
     this.creatorDecks.set(submission.id, submission)
     this.persistState()
@@ -247,7 +267,12 @@ export class MemoryStore {
   updateCreatorDeck(id: string, updates: Partial<CreatorDeckSubmission>) {
     const existing = this.creatorDecks.get(id)
     if (!existing) return undefined
-    const submission = { ...existing, ...updates }
+    const submission = {
+      ...existing,
+      ...updates,
+      price: updates.price ?? existing.price ?? CREATOR_DROP_PRICE,
+      status: updates.status ?? existing.status ?? 'pending',
+    }
     this.creatorDecks.set(id, submission)
     this.persistState()
     return submission
@@ -335,6 +360,50 @@ export class MemoryStore {
     return this.matches.get(matchId)
   }
 
+  findMatchForWallet(walletAddress: WalletAddress) {
+    const target = walletAddress.toLowerCase()
+    const byIndex = this.walletMatchIndex.get(target)
+    if (byIndex) return this.matches.get(byIndex)
+    for (const match of this.matches.values()) {
+      if (
+        match.playerA.walletAddress.toLowerCase() === target ||
+        match.playerB?.walletAddress.toLowerCase() === target
+      ) {
+        return match
+      }
+    }
+    return undefined
+  }
+
+  mapTicketsToMatch(ticketIds: string[], matchId: string) {
+    for (const id of ticketIds) {
+      this.ticketMatchIndex.set(id, matchId)
+    }
+  }
+
+  findMatchForTicket(ticketId: string) {
+    const matchId = this.ticketMatchIndex.get(ticketId)
+    if (matchId) return this.matches.get(matchId)
+    return undefined
+  }
+
+  clearTicketMatch(ticketId: string) {
+    this.ticketMatchIndex.delete(ticketId)
+  }
+
+  markPlayerReady(matchId: string, walletAddress: WalletAddress) {
+    const match = this.matches.get(matchId)
+    if (!match) return undefined
+    const target = walletAddress.toLowerCase()
+    if (match.playerA.walletAddress.toLowerCase() === target) {
+      match.playerA.ready = true
+    } else if (match.playerB && match.playerB.walletAddress.toLowerCase() === target) {
+      match.playerB.ready = true
+    }
+    this.matches.set(match.id, match)
+    return match
+  }
+
   saveMatch(match: Match) {
     this.matches.set(match.id, match)
   }
@@ -394,6 +463,14 @@ export class MemoryStore {
     return true
   }
 
+  getQueueStatus() {
+    const entries: { stake: number; count: number }[] = []
+    for (const [stake, queue] of this.queues.entries()) {
+      entries.push({ stake, count: queue.length })
+    }
+    return entries.sort((a, b) => a.stake - b.stake)
+  }
+
   recordPurchase(payload: Omit<DeckPurchase, 'id' | 'purchasedAt'>) {
     const purchase: DeckPurchase = {
       id: `purchase-${nanoid()}`,
@@ -439,6 +516,8 @@ export class MemoryStore {
     this.queues.clear()
     this.missions.clear()
     this.creatorDecks.clear()
+    this.walletMatchIndex.clear()
+    this.ticketMatchIndex.clear()
     seededCreatorDecks.forEach((deck) => {
       this.creatorDecks.set(deck.id, { ...deck })
     })
@@ -458,19 +537,23 @@ export class MemoryStore {
         walletAddress: playerA.walletAddress,
         username: playerA.username,
         deckId: playerA.activeDeckId,
+        deckPreviewUrl: this.getDeckPreview(playerA.activeDeckId),
         cards: [],
-        ready: true,
+        ready: false,
       },
       playerB: {
         playerId: playerB.id,
         walletAddress: playerB.walletAddress,
         username: playerB.username,
         deckId: playerB.activeDeckId,
+        deckPreviewUrl: this.getDeckPreview(playerB.activeDeckId),
         cards: [],
-        ready: true,
+        ready: false,
       },
     }
     this.matches.set(match.id, match)
+    this.walletMatchIndex.set(playerA.walletAddress.toLowerCase(), match.id)
+    this.walletMatchIndex.set(playerB.walletAddress.toLowerCase(), match.id)
     return match
   }
 

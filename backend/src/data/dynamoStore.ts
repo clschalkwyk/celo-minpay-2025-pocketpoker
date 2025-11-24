@@ -10,7 +10,9 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   TransactWriteCommand,
+  type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb'
 import { customAlphabet } from 'nanoid'
 import type {
@@ -25,6 +27,8 @@ import type {
   WalletAddress,
 } from '../types.js'
 import { sampleDecks, seededCreatorDecks } from './deckData.js'
+
+const CREATOR_DROP_PRICE = 1
 
 const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz', 10)
 const tableName = process.env.DYNAMO_TABLE_NAME
@@ -123,6 +127,8 @@ const pkQueueWallet = (wallet: string) => `QUEUE_WALLET#${wallet}`
 const skQueueWallet = (stake: number, ticketId: string) => `TICKET#${stake}#${ticketId}`
 const pkCreditHold = (ticketId: string) => `CREDIT_HOLD#${ticketId}`
 const skCreditHold = 'DETAIL'
+const pkTicketMatch = (ticketId: string) => `TICKET_MATCH#${ticketId}`
+const skTicketMatch = 'MATCH'
 
 const normalizeSubmission = (
   submission: CreatorDeckSubmission,
@@ -132,6 +138,7 @@ const normalizeSubmission = (
   const nsfwFlag = typeof overrides?.nsfwFlag === 'boolean' ? overrides.nsfwFlag : submission.nsfwFlag ?? false
   const reviewNotes = overrides?.reviewNotes ?? submission.reviewNotes
   const submittedAt = submission.submittedAt ?? Date.now()
+  const price = overrides?.price ?? submission.price ?? CREATOR_DROP_PRICE
   return {
     ...submission,
     ...overrides,
@@ -139,6 +146,7 @@ const normalizeSubmission = (
     nsfwFlag,
     reviewNotes,
     submittedAt,
+    price,
   }
 }
 
@@ -153,7 +161,21 @@ export class DynamoStore {
   private client = ensureClient()
 
   getDecks(): DeckTheme[] {
-    return sampleDecks
+    const creatorDeckThemes: DeckTheme[] = seededCreatorDecks
+      .filter((submission) => submission.status === 'approved' && !submission.nsfwFlag)
+      .map((submission) => ({
+        id: submission.id,
+        name: submission.deckName,
+        rarity: submission.rarity,
+        description: submission.description,
+        previewImageUrl: submission.previewImageUrl,
+        unlockCondition: 'Creator submission',
+        creatorName: submission.creatorName,
+        creatorWallet: submission.creatorWallet,
+        status: 'live',
+        price: submission.price ?? CREATOR_DROP_PRICE,
+      }))
+    return [...sampleDecks, ...creatorDeckThemes]
   }
 
   async listCreatorDecks() {
@@ -255,30 +277,32 @@ export class DynamoStore {
       { status: 'pending', nsfwFlag: false },
     )
 
+    const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
+      {
+        Put: {
+          TableName: tableName!,
+          Item: {
+            PK: pkCreatorSubmission(submission.id),
+            SK: skCreatorSubmission,
+            submission,
+          },
+        },
+      },
+      {
+        Put: {
+          TableName: tableName!,
+          Item: {
+            PK: pkSubmissionFeed,
+            SK: skSubmissionFeed(submission.status, submission.submittedAt, submission.id),
+            submission,
+          },
+        },
+      },
+    ]
+
     await this.client.send(
       new TransactWriteCommand({
-        TransactItems: [
-          {
-            Put: {
-              TableName: tableName!,
-              Item: {
-                PK: pkCreatorSubmission(submission.id),
-                SK: skCreatorSubmission,
-                submission,
-              },
-            },
-          },
-          {
-            Put: {
-              TableName: tableName!,
-              Item: {
-                PK: pkSubmissionFeed,
-                SK: skSubmissionFeed(submission.status, submission.submittedAt, submission.id),
-                submission,
-              },
-            },
-          },
-        ] as any,
+        TransactItems: transactItems,
       }),
     )
 
@@ -300,20 +324,7 @@ export class DynamoStore {
     })
     const oldFeedSk = skSubmissionFeed(existing.status, existing.submittedAt, existing.id)
     const newFeedSk = skSubmissionFeed(next.status, next.submittedAt, next.id)
-    const transactItems: Array<
-      | {
-          Put: {
-            TableName: string
-            Item: Record<string, unknown>
-          }
-        }
-      | {
-          Delete: {
-            TableName: string
-            Key: Record<string, unknown>
-          }
-        }
-    > = [
+    const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
       {
         Put: {
           TableName: tableName!,
@@ -346,7 +357,7 @@ export class DynamoStore {
 
     await this.client.send(
       new TransactWriteCommand({
-        TransactItems: transactItems as any,
+        TransactItems: transactItems,
       }),
     )
     return next
@@ -542,6 +553,79 @@ export class DynamoStore {
     return resp.Item?.match as Match | undefined
   }
 
+  async findMatchForWallet(walletAddress: WalletAddress) {
+    const target = walletAddress.toLowerCase()
+    const resp = await this.client.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: 'attribute_exists(match)',
+        Limit: 25,
+      }),
+    )
+    const matches = (resp.Items ?? []).map((item) => item.match as Match)
+    return matches.find(
+      (match) =>
+        match.playerA.walletAddress.toLowerCase() === target ||
+        match.playerB?.walletAddress.toLowerCase() === target,
+    )
+  }
+
+  async mapTicketsToMatch(ticketIds: string[], matchId: string) {
+    const puts = ticketIds.map((ticketId) => ({
+      PutRequest: {
+        Item: {
+          PK: pkTicketMatch(ticketId),
+          SK: skTicketMatch,
+          matchId,
+        },
+      },
+    }))
+    for (let i = 0; i < puts.length; i += 25) {
+      const chunk = puts.slice(i, i + 25)
+      await this.client.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [tableName!]: chunk,
+          },
+        }),
+      )
+    }
+  }
+
+  async findMatchForTicket(ticketId: string) {
+    const resp = await this.client.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { PK: pkTicketMatch(ticketId), SK: skTicketMatch },
+      }),
+    )
+    const matchId = (resp.Item as { matchId?: string } | undefined)?.matchId
+    if (!matchId) return undefined
+    return this.getMatch(matchId)
+  }
+
+  async clearTicketMatch(ticketId: string) {
+    await this.client.send(
+      new DeleteCommand({
+        TableName: tableName,
+        Key: { PK: pkTicketMatch(ticketId), SK: skTicketMatch },
+      }),
+    )
+  }
+
+  async markPlayerReady(matchId: string, walletAddress: WalletAddress) {
+    const match = await this.getMatch(matchId)
+    if (!match) return undefined
+    const target = walletAddress.toLowerCase()
+    if (match.playerA.walletAddress.toLowerCase() === target) {
+      match.playerA.ready = true
+    } else if (match.playerB && match.playerB.walletAddress.toLowerCase() === target) {
+      match.playerB.ready = true
+    }
+    await this.saveMatch(match)
+    return match
+  }
+
   async saveMatch(match: Match) {
     await this.client.send(
       new PutCommand({
@@ -556,6 +640,12 @@ export class DynamoStore {
   }
 
   async createMatch(stake: number, playerA: UserProfile, playerB: UserProfile): Promise<Match> {
+    const deckPreviewFor = (deckId: string) => {
+      const deck = this.getDecks().find((item) => item.id === deckId)
+      if (deck?.previewImageUrl) return deck.previewImageUrl
+      if (deckId.includes('creator')) return '/deck_5.jpg'
+      return undefined
+    }
     const match: Match = {
       id: nanoid(),
       stake,
@@ -567,16 +657,18 @@ export class DynamoStore {
         walletAddress: playerA.walletAddress,
         username: playerA.username,
         deckId: playerA.activeDeckId,
+        deckPreviewUrl: deckPreviewFor(playerA.activeDeckId),
         cards: [],
-        ready: true,
+        ready: false,
       },
       playerB: {
         playerId: playerB.id,
         walletAddress: playerB.walletAddress,
         username: playerB.username,
         deckId: playerB.activeDeckId,
+        deckPreviewUrl: deckPreviewFor(playerB.activeDeckId),
         cards: [],
-        ready: true,
+        ready: false,
       },
     }
     await this.saveMatch(match)
@@ -662,6 +754,7 @@ export class DynamoStore {
         ExpressionAttributeValues: { ':pk': pkQueueStake(stake) },
         Limit: 2,
         ScanIndexForward: true,
+        ConsistentRead: true,
       }),
     )
     const tickets = (resp.Items ?? []).map((item) => item.ticket as QueueTicket)
@@ -759,6 +852,11 @@ export class DynamoStore {
     await this.consumeCreditHold(ticketId)
     await this.adjustCredits(hold.walletAddress, hold.amount)
     return true
+  }
+
+  getQueueStatus(): Promise<{ stake: number; count: number }[]> {
+    // Queue visibility not implemented for Dynamo-backed queues in this demo.
+    return Promise.resolve([])
   }
 
   async recordPurchase(payload: Omit<DeckPurchase, 'id' | 'purchasedAt'>) {

@@ -51,6 +51,7 @@ export type CreatorDeckSubmission = {
   creatorWallet?: WalletAddress
   reviewedAt?: number
   reviewedBy?: string
+  price?: number // Added price field
 }
 
 export type DeckPurchase = {
@@ -104,6 +105,7 @@ export type PlayerSeat = {
   walletAddress: WalletAddress
   username: string
   deckId: string
+  deckPreviewUrl?: string
   cards: Card[]
   ready: boolean
 }

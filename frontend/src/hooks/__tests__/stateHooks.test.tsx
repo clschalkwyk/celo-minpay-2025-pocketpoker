@@ -106,6 +106,6 @@ describe('state hooks', () => {
     await user.click(screen.getByText('queue'))
     await waitFor(() => expect(Api.queueDemoMatch).toHaveBeenCalled())
 
-    await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('active'))
+    await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('ready'))
   })
 })

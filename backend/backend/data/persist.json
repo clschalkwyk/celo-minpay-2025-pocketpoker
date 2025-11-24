@@ -9,7 +9,8 @@
       "description": "Electric lines inspired by Johannesburg nightlife.",
       "previewImageUrl": "/deck_6.jpg",
       "status": "pending",
-      "submittedAt": 1763812360721
+      "submittedAt": 1763915317067,
+      "price": 1
     },
     {
       "id": "creator-sub-2",
@@ -20,7 +21,21 @@
       "description": "Beaded florals celebrating community potluck nights.",
       "previewImageUrl": "/deck_7.jpg",
       "status": "approved",
-      "submittedAt": 1763743960721
+      "submittedAt": 1763846917067,
+      "price": 1
+    },
+    {
+      "id": "creator-si0gst7fhw",
+      "deckName": "Creator Owned",
+      "creatorName": "Creator",
+      "creatorWallet": "0xCREATOR",
+      "rarity": "rare",
+      "description": "Deck from creator wallet",
+      "previewImageUrl": "/deck.jpg",
+      "status": "approved",
+      "submittedAt": 1763933317338,
+      "nsfwFlag": false,
+      "price": 1
     }
   ],
   "purchases": []

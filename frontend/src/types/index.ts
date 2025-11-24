@@ -53,6 +53,7 @@ export type CreatorDeckSubmission = {
   nsfwFlag?: boolean
   reviewedAt?: number
   reviewedBy?: string
+  price?: number // Added price field
 }
 
 export type DeckPurchase = {
@@ -120,12 +121,13 @@ export type PlayerSeat = {
   username: string
   avatarUrl: string
   deckId: string
+  deckPreviewUrl?: string
   cards: Card[]
   ready: boolean
   isYou: boolean
 }
 
-export type MatchPhase = 'idle' | 'queueing' | 'active' | 'result'
+export type MatchPhase = 'idle' | 'queueing' | 'ready' | 'active' | 'result'
 
 export type MatchState = {
   id: string

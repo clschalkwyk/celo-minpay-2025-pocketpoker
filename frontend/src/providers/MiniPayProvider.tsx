@@ -14,9 +14,11 @@ import {
   fakeTxHash,
   fetchBalance as fetchMiniPayBalance,
   requestAccounts,
+  randomMatchId,
   sendStakeTx,
 } from '../lib/minipay'
-import { CELO_TO_ZAR_RATE, convertZarToCelo } from '../lib/currency'
+import { CELO_TO_ZAR_RATE, convertZarToCelo, formatCelo } from '../lib/currency'
+import { addDebugLog } from '../lib/debugLog'
 
 type MiniPayContextValue = {
   status: MiniPayStatus
@@ -27,7 +29,7 @@ type MiniPayContextValue = {
   isMiniPay: boolean
   connect: () => Promise<void>
   refreshBalance: () => Promise<void>
-  sendStake: (stake: number) => Promise<{ txHash: string }>
+  sendStake: (stake: number) => Promise<{ txHash: string; matchId?: string }>
   exchangeRate: number
 }
 
@@ -114,12 +116,38 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
           await ensureChain(provider, requiredChain)
           const celoAmount = convertZarToCelo(stake)
           if (celoAmount <= 0) throw new Error('Invalid stake amount')
-          const txHash = await sendStakeTx({ provider, from: address, stake: celoAmount, contractAddress: escrowAddress })
+          const gasLimit = Number(import.meta.env.VITE_MINIPAY_GAS_LIMIT ?? 300000)
+          const gasPriceGwei = Number(import.meta.env.VITE_MINIPAY_GAS_PRICE_GWEI ?? 5) // default 5 gwei
+          const gasPriceWei = gasPriceGwei * 1_000_000_000
+          const matchId = randomMatchId()
+          addDebugLog(
+            `MiniPay sendStake start stake=${stake}ZAR (~${formatCelo(
+              celoAmount,
+              6,
+            )} CELO) matchId=${matchId} gas=${gasLimit} gasPriceGwei=${gasPriceGwei ?? 'auto'}`,
+          )
+          const txHash = await sendStakeTx({
+            provider,
+            from: address,
+            stake: celoAmount,
+            contractAddress: escrowAddress,
+            matchId,
+            gasLimit: Number.isFinite(gasLimit) && gasLimit > 0 ? gasLimit : undefined,
+            gasPriceWei: gasPriceWei && Number.isFinite(gasPriceWei) && gasPriceWei > 0 ? gasPriceWei : undefined,
+          })
           await refreshBalance()
-          return { txHash }
+          addDebugLog(`MiniPay sendStake success tx=${txHash}`)
+          return { txHash, matchId }
         } catch (err) {
-          console.error(err)
-          throw new Error('MiniPay transaction failed')
+          const reason =
+            err instanceof Error
+              ? err.message || err.toString()
+              : typeof err === 'object'
+                ? JSON.stringify(err)
+                : String(err ?? 'Unknown error')
+          console.error('MiniPay sendStake failed', err)
+          addDebugLog(`MiniPay sendStake failed: ${reason}`)
+          throw new Error(`MiniPay transaction failed: ${reason}`)
         }
       }
       // fallback demo tx

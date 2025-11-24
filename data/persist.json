@@ -4,21 +4,35 @@
       "id": "creator-sub-1",
       "deckName": "Joburg Neon Cascade",
       "creatorName": "Studio Zazi",
+      "creatorWallet": "0x0bE7a3d6b52a1234567890123456789012345678",
       "rarity": "legendary",
       "description": "Electric lines inspired by Johannesburg nightlife.",
       "previewImageUrl": "/deck_6.jpg",
       "status": "pending",
-      "submittedAt": 1763543060996
+      "submittedAt": 1763911163301
     },
     {
       "id": "creator-sub-2",
       "deckName": "Ubuntu Bloom",
       "creatorName": "Aya Creative",
+      "creatorWallet": "0x0cA5b3E3c42a1234567890123456789012345678",
       "rarity": "rare",
       "description": "Beaded florals celebrating community potluck nights.",
       "previewImageUrl": "/deck_7.jpg",
       "status": "approved",
-      "submittedAt": 1763474660996
+      "submittedAt": 1763842763301
+    },
+    {
+      "id": "creator-7zbjzti7fy",
+      "deckName": "My Deck",
+      "creatorName": "Me",
+      "creatorWallet": "0xCreator",
+      "rarity": "rare",
+      "description": "Test deck",
+      "previewImageUrl": "/img.jpg",
+      "status": "approved",
+      "submittedAt": 1763929163362,
+      "nsfwFlag": false
     }
   ],
   "purchases": []

@@ -5,12 +5,14 @@ export type StakeSelectorProps = {
   stakes: StakeTier[]
   value: number
   onChange: (amount: number) => void
+  badges?: Record<number, string>
 }
 
-export const StakeSelector = ({ stakes, value, onChange }: StakeSelectorProps) => (
+export const StakeSelector = ({ stakes, value, onChange, badges }: StakeSelectorProps) => (
   <div className="flex flex-wrap gap-3">
     {stakes.map((stake) => {
       const isSelected = value === stake.amount
+      const badge = badges?.[stake.amount]
       return (
         <button
           key={stake.id}
@@ -27,7 +29,12 @@ export const StakeSelector = ({ stakes, value, onChange }: StakeSelectorProps) =
             <p className="text-base">{stake.label}</p>
             <p className="text-xs uppercase tracking-[0.4em] text-gray-400">stake</p>
           </div>
-          <span className="text-sm text-white/80">R{stake.amount}</span>
+          <span className="text-sm text-white/80">R{stake.amount.toFixed(2)}</span>
+          {badge && (
+            <span className="rounded-full bg-pp-primary/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.35em] text-pp-primary">
+              {badge}
+            </span>
+          )}
         </button>
       )
     })}

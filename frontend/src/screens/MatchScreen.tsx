@@ -57,7 +57,7 @@ const reduceResultState = (state: ResultState, action: ResultAction): ResultStat
 export const MatchScreen = () => {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { match, acknowledgeResult, queueForMatch } = useMatch()
+  const { match, acknowledgeResult, queueForMatch, connectionStatus, resyncMatch, loadMatchById } = useMatch()
   const { setSelectedStake } = useUIStore()
   const [resultState, dispatch] = useReducer(reduceResultState, {
     currentMatchId: match?.id,
@@ -74,6 +74,7 @@ export const MatchScreen = () => {
     if (!match) return undefined
     return deriveLocalResult(match.you.cards, match.opponent.cards)
   }, [match])
+  const allReady = Boolean(match?.you.ready && match?.opponent.ready)
   const fallbackSummary = (winner: 'you' | 'opponent') =>
     winner === 'you' ? 'You cleaned them out.' : 'Tough beat. Shuffle again.'
   const derivedWinner = revealComplete ? derivedResult?.winner : undefined
@@ -89,14 +90,18 @@ export const MatchScreen = () => {
     : undefined
 
   useEffect(() => {
-    if (!match) {
+    if (!match && id) {
+      void loadMatchById(id)
+      return
+    }
+    if (!match && !id) {
       navigate('/lobby', { replace: true })
       return
     }
-    if (id && match.id !== id) {
+    if (id && match && match.id !== id) {
       navigate(`/match/${match.id}`, { replace: true })
     }
-  }, [id, match, navigate])
+  }, [id, match, navigate, loadMatchById])
 
   useEffect(() => {
     dispatch({ type: 'set_match', matchId })
@@ -122,7 +127,25 @@ export const MatchScreen = () => {
     }
   }, [winnerForCountdown, revealComplete])
 
-  if (!match) return null
+  if (!match) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-pp-bg px-4 text-white">
+        <div className="animate-pulse rounded-3xl border border-white/10 bg-white/5 px-6 py-5 text-center shadow-lg">
+          <p className="text-xs uppercase tracking-[0.4em] text-gray-500">Loading match</p>
+          <p className="mt-2 text-lg font-semibold text-white">Syncing your table…</p>
+          <p className="mt-1 text-sm text-gray-400">If this takes more than a few seconds, return to the lobby and re-queue.</p>
+          <div className="mt-3 space-x-2">
+            <SecondaryButton onClick={() => navigate('/lobby')}>Back to Lobby</SecondaryButton>
+            {id && (
+              <SecondaryButton onClick={() => void loadMatchById(id)} className="bg-white/10">
+                Retry sync
+              </SecondaryButton>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
   const overlayMatch = match.result
     ? match
     : effectiveResult
@@ -138,18 +161,69 @@ export const MatchScreen = () => {
             #{match.id.slice(-4).toUpperCase()}
           </h1>
           <p className="mt-2 text-xs uppercase tracking-[0.4em] text-gray-400">{`Stake R${match.stake.toFixed(2)} · Pot R${(match.stake * 2).toFixed(2)}`}</p>
+          {connectionStatus === 'idle' && (
+            <SecondaryButton onClick={() => void resyncMatch()} className="mt-3 px-4 py-2 text-xs">
+              Re-sync match state
+            </SecondaryButton>
+          )}
         </div>
-        <GameTable
-          match={match}
-          onRevealComplete={() => dispatch({ type: 'mark_reveal', matchId: match.id })}
-        />
+        {!allReady && (
+          <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#0b132a] to-[#0a1b2f] p-5 text-center shadow-[0_20px_45px_rgba(5,8,22,0.6)]">
+            <p className="text-xs uppercase tracking-[0.5em] text-gray-400">Ready Check</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Syncing players…</h2>
+            <p className="mt-2 text-sm text-gray-300">
+              We&rsquo;ll start as soon as both tables are ready. Hang tight.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-left text-sm">
+              {[
+                { label: 'You', ready: match.you.ready, name: match.you.username },
+                { label: 'Opponent', ready: match.opponent.ready, name: match.opponent.username },
+              ].map((entry) => (
+                <div
+                  key={entry.label}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 shadow-inner"
+                >
+                  <p className="text-[10px] uppercase tracking-[0.35em] text-gray-500">{entry.label}</p>
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="text-white">{entry.name}</span>
+                    <span
+                      className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] ${
+                        entry.ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-200'
+                      }`}
+                    >
+                      <span className="h-2 w-2 rounded-full bg-current" />
+                      {entry.ready ? 'Ready' : 'Syncing'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] uppercase tracking-[0.3em] text-gray-500">
+              Auto-starting together once locked.
+            </p>
+          </div>
+        )}
+        {allReady && (
+          <GameTable
+            match={match}
+            onRevealComplete={() => dispatch({ type: 'mark_reveal', matchId: match.id })}
+          />
+        )}
         {effectiveResult && !resultVisible && revealComplete && (
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-xs uppercase tracking-[0.4em] text-gray-200">
             Showing result in{' '}
             <span className="font-semibold text-white">{resultCountdown ?? resultDelaySeconds}s</span>
           </div>
         )}
-        <SecondaryButton onClick={() => navigate('/lobby')} className="px-5">
+        <SecondaryButton
+          onClick={() => {
+            if (match) {
+              acknowledgeResult(match.result?.winner)
+            }
+            navigate('/lobby')
+          }}
+          className="px-5"
+        >
           Back to Lobby
         </SecondaryButton>
       </div>

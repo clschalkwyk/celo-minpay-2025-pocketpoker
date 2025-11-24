@@ -32,6 +32,7 @@ export class MatchmakingService {
     const playerA = await store.getOrCreateProfile(a.walletAddress)
     const playerB = await store.getOrCreateProfile(b.walletAddress)
     const match = await createMatchWithCards(stake, playerA, playerB)
+    await store.mapTicketsToMatch([a.id, b.id], match.id)
     this.scheduleResult(match)
     return { status: 'matched', match }
   }

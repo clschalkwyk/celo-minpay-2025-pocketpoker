@@ -78,6 +78,7 @@ export const seededCreatorDecks: CreatorDeckSubmission[] = [
     previewImageUrl: '/deck_6.jpg',
     status: 'pending',
     submittedAt: Date.now() - 1000 * 60 * 60 * 5,
+    price: 1,
   },
   {
     id: 'creator-sub-2',
@@ -89,5 +90,6 @@ export const seededCreatorDecks: CreatorDeckSubmission[] = [
     previewImageUrl: '/deck_7.jpg',
     status: 'approved',
     submittedAt: Date.now() - 1000 * 60 * 60 * 24,
+    price: 1,
   },
 ]
