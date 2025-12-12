@@ -4,6 +4,9 @@
 
 Mobile‑first MiniPay game where two players lock a tiny stake, get 3 cards each, and snap‑reveal the winner. Includes a creator portal for community decks and a lean backend that tracks profiles, XP, ELO, missions, and a real leaderboard (top 20).
 
+## Youtube Video 
+
+https://youtu.be/kgCalrq61EM
 ---
 
 ## Gameplay Snapshot
@@ -14,6 +17,14 @@ Mobile‑first MiniPay game where two players lock a tiny stake, get 3 cards eac
 - **Leaderboards:** Top 20 by ELO, then wins; real player stats.
 
 ---
+
+## For This Hackathon 
+- https://www.hackersdao.com/celo-minipay-hackathon
+- URL: https://pocketpoker.co.za/
+- Set MiniPay app into developer mode and under Developer Settings, goto "Test your Mini App" and enter the PocketPoker url.
+- Admin backend to approve creator submissions: https://drive.google.com/file/d/1ZTXbfZpceJhdqDmzkFAsxnvdQjrbvY88/view?usp=sharing
+- Testnet Contract : https://sepolia.celoscan.io/address/0x8c1be6b555c25d80e82bf500d08f55f2ad39e0ca
+
 
 ## How to Play
 1) Open the app inside **MiniPay** (required for gameplay).  
