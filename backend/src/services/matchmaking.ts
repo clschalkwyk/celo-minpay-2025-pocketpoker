@@ -15,25 +15,35 @@ export class MatchmakingService {
 
   async queuePlayer(walletAddress: WalletAddress, stake: number, options?: QueueOptions): Promise<QueueResult> {
     const player = await store.getOrCreateProfile(walletAddress)
+    this.app.log.info(`MatchmakingService: queuePlayer for ${walletAddress}, stake=${stake}, escrowId=${options?.escrowId}, botOpponent=${options?.botOpponent}`)
 
     if (options?.botOpponent) {
       const bot = store.createBotProfile()
-      const match = await createMatchWithCards(stake, player, bot)
-      this.scheduleResult(match)
+      this.app.log.info(`MatchmakingService: Creating bot match for ${walletAddress}`)
+      const match = await createMatchWithCards(stake, player, bot, options?.escrowId)
+      if (!match.escrowId) {
+        this.scheduleResult(match)
+      }
       return { status: 'matched', match }
     }
 
     const ticketId = nanoid()
     await store.enqueue({ id: ticketId, stake, walletAddress, enqueuedAt: Date.now() })
     const pair = await store.dequeuePair(stake)
-    if (!pair) return { status: 'queued', ticketId }
+    if (!pair) {
+      this.app.log.info(`MatchmakingService: No pair found for ${walletAddress}, ticketId=${ticketId}. Queued.`)
+      return { status: 'queued', ticketId }
+    }
 
     const [a, b] = pair
     const playerA = await store.getOrCreateProfile(a.walletAddress)
     const playerB = await store.getOrCreateProfile(b.walletAddress)
-    const match = await createMatchWithCards(stake, playerA, playerB)
+    this.app.log.info(`MatchmakingService: Pair found for ${a.walletAddress} and ${b.walletAddress}, stake=${stake}. Creating match.`)
+    const match = await createMatchWithCards(stake, playerA, playerB, options?.escrowId)
     await store.mapTicketsToMatch([a.id, b.id], match.id)
-    this.scheduleResult(match)
+    if (!match.escrowId) {
+      this.scheduleResult(match)
+    }
     return { status: 'matched', match }
   }
 

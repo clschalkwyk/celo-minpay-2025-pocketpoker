@@ -57,6 +57,7 @@ export type QueueResponse =
 
 export type MatchPayload = {
   id: string
+  escrowId?: string // On-chain match ID for payout
   stake: number
   pot: number
   state?: 'queued' | 'active' | 'finished' | 'cancelled'
@@ -169,7 +170,7 @@ export const Api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  queueEscrowMatch: (payload: { walletAddress: string; stake: number; botOpponent?: boolean; txHash: string }) =>
+  queueEscrowMatch: (payload: { walletAddress: string; stake: number; botOpponent?: boolean; txHash: string; matchId: string }) =>
     request<QueueResponse>('/match/queue-escrow', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -242,6 +243,7 @@ export const mapMatchPayloadToState = (
 
   return {
     id: payload.id,
+    escrowId: payload.escrowId,
     stake: payload.stake,
     pot: payload.pot,
     phase,

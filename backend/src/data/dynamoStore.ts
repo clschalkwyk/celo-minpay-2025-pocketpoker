@@ -673,7 +673,50 @@ export class DynamoStore {
     )
   }
 
-  async createMatch(stake: number, playerA: UserProfile, playerB: UserProfile): Promise<Match> {
+  async listFinishedEscrowMatchesPendingPayout(): Promise<Match[]> {
+    const results: Match[] = []
+    let exclusiveStartKey: Record<string, unknown> | undefined
+    do {
+      const resp = await this.client.send(
+        new ScanCommand({
+          TableName: tableName,
+          FilterExpression: 'begins_with(PK, :pk)',
+          ExpressionAttributeValues: {
+            ':pk': 'MATCH#',
+          },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      )
+      for (const item of resp.Items ?? []) {
+        const match = item.match as Match | undefined
+        if (
+          match &&
+          match.state === 'finished' &&
+          match.escrowId &&
+          match.winner &&
+          match.payoutState !== 'paid' &&
+          !match.payoutTxHash
+        ) {
+          results.push(match)
+        }
+      }
+      exclusiveStartKey = resp.LastEvaluatedKey
+    } while (exclusiveStartKey)
+    return results
+  }
+
+  async markPayoutComplete(matchId: string, txHash?: string) {
+    const match = await this.getMatch(matchId)
+    if (!match) return
+    match.payoutState = 'paid'
+    if (txHash) {
+      match.payoutTxHash = txHash
+    }
+    match.payoutSettledAt = Date.now()
+    await this.saveMatch(match)
+  }
+
+  async createMatch(stake: number, playerA: UserProfile, playerB: UserProfile, escrowId?: string): Promise<Match> {
     const deckPreviewFor = (deckId: string) => {
       const deck = this.getDecks().find((item) => item.id === deckId)
       if (deck?.previewImageUrl) return deck.previewImageUrl
@@ -682,6 +725,7 @@ export class DynamoStore {
     }
     const match: Match = {
       id: nanoid(),
+      escrowId,
       stake,
       pot: stake * 2,
       createdAt: Date.now(),
@@ -705,6 +749,7 @@ export class DynamoStore {
         ready: false,
       },
     }
+    console.info(`DynamoStore: Creating match ${match.id} with stake=${stake}, escrowId=${escrowId}`)
     await this.saveMatch(match)
     return match
   }

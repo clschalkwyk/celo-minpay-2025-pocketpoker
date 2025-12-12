@@ -12,7 +12,10 @@ import {
   detectMiniPay,
   ensureChain,
   fakeTxHash,
-  fetchBalance as fetchMiniPayBalance,
+  fetchCUSDBalance,
+  fetchCUSDAllowance,
+  sendApproveTx,
+  waitForReceipt,
   requestAccounts,
   randomMatchId,
   sendStakeTx,
@@ -29,8 +32,9 @@ type MiniPayContextValue = {
   isMiniPay: boolean
   connect: () => Promise<void>
   refreshBalance: () => Promise<void>
-  sendStake: (stake: number) => Promise<{ txHash: string; matchId?: string }>
+  sendStake: (stake: number, matchId?: string) => Promise<{ txHash: string; matchId?: string }>
   exchangeRate: number
+  cUSDAddress: string
 }
 
 const MiniPayContext = createContext<MiniPayContextValue | undefined>(undefined)
@@ -42,7 +46,12 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
   const [celoBalance, setCeloBalance] = useState(0)
   const [error, setError] = useState<string>()
   const [isMiniPay, setIsMiniPay] = useState(false)
+  
   const escrowAddress = import.meta.env.VITE_ESCROW_ADDRESS
+  const cUSDAddress = import.meta.env.VITE_CUSD_ADDRESS || '0x765DE816845861e75A25fCA122bb6898B8B1282a'
+  if (!escrowAddress) {
+    throw new Error('VITE_ESCROW_ADDRESS is required for MiniPay')
+  }
   const requiredChain = import.meta.env.VITE_MINIPAY_CHAIN_ID
 
   const refreshBalance = useCallback(async () => {
@@ -50,8 +59,10 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
       if (isMiniPay && address) {
         const provider = detectMiniPay()
         if (provider) {
-          const value = await fetchMiniPayBalance(provider, address)
+          // Fetch cUSD balance instead of native CELO
+          const value = await fetchCUSDBalance(provider, cUSDAddress, address)
           setCeloBalance(value)
+          // Assuming rate is roughly 1:1 with ZAR or whatever config says
           setBalance(Number((value * CELO_TO_ZAR_RATE).toFixed(2)))
           return
         }
@@ -64,7 +75,7 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
       console.error(err)
       setError('Unable to fetch balance')
     }
-  }, [isMiniPay, address])
+  }, [isMiniPay, address, cUSDAddress])
 
   const initialize = useCallback(async () => {
     setStatus('checking')
@@ -81,13 +92,14 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
       setIsMiniPay(true)
       setAddress(wallet)
       setStatus('ready')
+      addDebugLog(`Init: Wallet=${wallet} Escrow=${escrowAddress} cUSD=${cUSDAddress}`)
       await refreshBalance()
     } catch (err) {
       console.error(err)
       setError((err as Error).message)
       setStatus('error')
     }
-  }, [refreshBalance, requiredChain])
+  }, [refreshBalance, requiredChain, cUSDAddress, escrowAddress])
 
   const connect = useCallback(async () => {
     await initialize()
@@ -101,24 +113,54 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
   }, [initialize])
 
   const sendStake = useCallback(
-    async (stake: number) => {
-      if (isMiniPay && address && escrowAddress) {
+    async (stake: number, existingMatchId?: string) => {
+      if (isMiniPay && address && escrowAddress && cUSDAddress) {
         try {
           const provider = detectMiniPay()
           if (!provider) throw new Error('MiniPay provider not found')
           await ensureChain(provider, requiredChain)
+          
           const celoAmount = convertZarToCelo(stake)
           if (celoAmount <= 0) throw new Error('Invalid stake amount')
-          const gasLimit = Number(import.meta.env.VITE_MINIPAY_GAS_LIMIT ?? 300000)
-          const gasPriceGwei = Number(import.meta.env.VITE_MINIPAY_GAS_PRICE_GWEI ?? 5) // default 5 gwei
+          
+          const gasLimit = Number(import.meta.env.VITE_MINIPAY_GAS_LIMIT ?? 500000)
+          const gasPriceGwei = Number(import.meta.env.VITE_MINIPAY_GAS_PRICE_GWEI ?? 5)
           const gasPriceWei = gasPriceGwei * 1_000_000_000
-          const matchId = randomMatchId()
+          
+          // 1. Check Allowance
+          const allowance = await fetchCUSDAllowance(provider, cUSDAddress, address, escrowAddress)
+          addDebugLog(`cUSD Allowance: ${allowance}, Required: ${celoAmount}`)
+
+          // Force upgrade to infinite approval if allowance is small
+          if (allowance < 1000) {
+            addDebugLog(`Approving cUSD (Infinite)...`)
+            // Approve a large amount to avoid repeated approvals and precision issues
+            const largeAmount = 1000000 
+            const approveHash = await sendApproveTx({
+              provider,
+              from: address,
+              tokenAddress: cUSDAddress,
+              spender: escrowAddress,
+              amount: largeAmount, 
+              gasPriceWei,
+              feeCurrency: cUSDAddress, // Pay gas in cUSD
+            })
+            addDebugLog(`Approve tx sent: ${approveHash}. Waiting for confirmation...`)
+            await waitForReceipt(provider, approveHash)
+            addDebugLog(`Approve confirmed.`)
+            // Small delay to ensure node sync
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+          }
+
+          // 2. Fund Stake
+          const matchId = existingMatchId || randomMatchId()
           addDebugLog(
             `MiniPay sendStake start stake=${stake}ZAR (~${formatCelo(
               celoAmount,
               6,
-            )} CELO) matchId=${matchId} gas=${gasLimit} gasPriceGwei=${gasPriceGwei ?? 'auto'}`,
+            )} cUSD) matchId=${matchId} gas=${gasLimit} gasPriceGwei=${gasPriceGwei ?? 'auto'}`,
           )
+          
           const txHash = await sendStakeTx({
             provider,
             from: address,
@@ -127,7 +169,13 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
             matchId,
             gasLimit: Number.isFinite(gasLimit) && gasLimit > 0 ? gasLimit : undefined,
             gasPriceWei: gasPriceWei && Number.isFinite(gasPriceWei) && gasPriceWei > 0 ? gasPriceWei : undefined,
+            feeCurrency: cUSDAddress, // Pay gas in cUSD
           })
+          
+          addDebugLog(`Stake tx sent: ${txHash}. Waiting for confirmation...`)
+          await waitForReceipt(provider, txHash)
+          addDebugLog(`Stake confirmed.`)
+
           await refreshBalance()
           addDebugLog(`MiniPay sendStake success tx=${txHash}`)
           return { txHash, matchId }
@@ -149,7 +197,7 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
       setCeloBalance((prev) => Math.max(prev - convertZarToCelo(stake), 0))
       return { txHash }
     },
-    [isMiniPay, address, escrowAddress, refreshBalance, requiredChain],
+    [isMiniPay, address, escrowAddress, cUSDAddress, refreshBalance, requiredChain],
   )
 
   const value = useMemo(
@@ -164,8 +212,9 @@ export const MiniPayProvider = ({ children }: { children: ReactNode }) => {
       refreshBalance,
       sendStake,
       exchangeRate: CELO_TO_ZAR_RATE,
+      cUSDAddress,
     }),
-    [status, address, balance, celoBalance, error, isMiniPay, connect, refreshBalance, sendStake],
+    [status, address, balance, celoBalance, error, isMiniPay, connect, refreshBalance, sendStake, cUSDAddress],
   )
 
   return <MiniPayContext.Provider value={value}>{children}</MiniPayContext.Provider>

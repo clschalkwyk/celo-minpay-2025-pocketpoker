@@ -98,6 +98,7 @@ export const ProfileScreen = () => {
     }
   }
 
+
   return (
     <div className="min-h-screen bg-pp-bg px-4 py-6 text-white">
       <div className="mx-auto max-w-2xl space-y-6">
@@ -269,6 +270,7 @@ export const ProfileScreen = () => {
             {resetting ? 'Resetting...' : 'Reset profile to default'}
           </SecondaryButton>
         </section>
+
       </div>
     </div>
   )

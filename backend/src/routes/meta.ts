@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { randomUUID } from 'node:crypto'
 import { extname } from 'node:path'
 import { store } from '../data/store.js'
+import { escrowService } from '../services/escrow.js'
 import type { CreatorDeckSubmission, DeckTheme, WalletAddress } from '../types.js'
 
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? 'admin-demo-key'
@@ -168,6 +169,56 @@ export async function registerMetaRoutes(app: FastifyInstance) {
     if (!requireAdmin(request, reply)) return
     const stats = await store.getAdminStats()
     return stats
+  })
+  app.post('/admin/payout-pending', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const pending = await store.listFinishedEscrowMatchesPendingPayout()
+    const results: Array<{ matchId: string; escrowId?: string; txHash?: string; error?: string }> = []
+
+    for (const match of pending) {
+      if (!match.escrowId || !match.winner) {
+        results.push({ matchId: match.id, escrowId: match.escrowId, error: 'missing escrowId or winner' })
+        continue
+      }
+      try {
+        const txHash = await escrowService.payoutMatch(match.escrowId, match.winner)
+        if (!txHash) {
+          results.push({
+            matchId: match.id,
+            escrowId: match.escrowId,
+            error: 'payout did not return txHash (check private key/RPC)',
+          })
+          continue
+        }
+        await store.markPayoutComplete(match.id, txHash)
+        results.push({ matchId: match.id, escrowId: match.escrowId, txHash })
+      } catch (err) {
+        results.push({
+          matchId: match.id,
+          escrowId: match.escrowId,
+          error: (err as Error)?.message ?? 'payout failed',
+        })
+      }
+    }
+
+    return { processed: results.length, results }
+  })
+
+  app.post('/admin/reset-payout', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const body = request.body as { matchId?: string }
+    if (!body?.matchId) {
+      return reply.status(400).send({ error: 'matchId is required' })
+    }
+    const match = await store.getMatch(body.matchId)
+    if (!match) {
+      return reply.status(404).send({ error: 'Match not found' })
+    }
+    match.payoutState = undefined
+    match.payoutTxHash = undefined
+    match.payoutSettledAt = undefined
+    await store.saveMatch(match)
+    return { reset: true, matchId: match.id }
   })
   app.post('/creator-decks', async (request, reply) => {
     const body = request.body as {

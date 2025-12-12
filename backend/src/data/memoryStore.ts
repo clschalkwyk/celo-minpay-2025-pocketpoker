@@ -436,6 +436,28 @@ export class MemoryStore {
     return next
   }
 
+  listFinishedEscrowMatchesPendingPayout() {
+    return Array.from(this.matches.values()).filter(
+      (match) =>
+        match.state === 'finished' &&
+        Boolean(match.escrowId) &&
+        Boolean(match.winner) &&
+        match.payoutState !== 'paid' &&
+        !match.payoutTxHash,
+    )
+  }
+
+  markPayoutComplete(matchId: string, txHash?: string) {
+    const match = this.matches.get(matchId)
+    if (!match) return
+    match.payoutState = 'paid'
+    if (txHash) {
+      match.payoutTxHash = txHash
+    }
+    match.payoutSettledAt = Date.now()
+    this.saveMatch(match)
+  }
+
   enqueue(ticket: QueueTicket) {
     const queue = this.queues.get(ticket.stake) ?? []
     queue.push(ticket)
@@ -545,9 +567,11 @@ export class MemoryStore {
     this.persistState()
   }
 
-  createMatch(stake: number, playerA: UserProfile, playerB: UserProfile): Match {
+  createMatch(stake: number, playerA: UserProfile, playerB: UserProfile, escrowId?: string): Match {
+    console.info(`MemoryStore: Creating match ${nanoid()} with stake=${stake}, escrowId=${escrowId ?? 'none'}`)
     const match: Match = {
       id: nanoid(),
+      escrowId,
       stake,
       pot: stake * 2,
       createdAt: Date.now(),

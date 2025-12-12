@@ -16,6 +16,13 @@ import { useProfileContext } from './ProfileProvider'
 import { useMissionContext } from './MissionProvider'
 import { Api, mapMatchPayloadToState, type QueueResponse } from '../lib/api'
 import { convertZarToCelo, formatCelo } from '../lib/currency'
+import {
+  detectMiniPay,
+  sendMarkReadyTx,
+  waitForReceipt,
+  fetchEscrowReadyFlags,
+  decodeRevertSelector,
+} from '../lib/minipay'
 
 export type MatchQueueStatus = 'idle' | 'funding' | 'searching' | 'waiting' | 'timeout' | 'error'
 export type MatchConnectionStatus = 'idle' | 'polling'
@@ -32,6 +39,9 @@ type MatchContextValue = {
   connectionStatus: MatchConnectionStatus
   lastQueuedStake?: number
   lastQueuedMode?: boolean
+  escrowAddress?: string
+  cUSDAddress?: string
+  retryMarkReady: (matchId: string, escrowId: string, stake: number) => Promise<void>
 }
 
 const MatchContext = createContext<MatchContextValue | undefined>(undefined)
@@ -42,12 +52,12 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
   const [queueStatus, setQueueStatus] = useState<MatchQueueStatus>('idle')
   const [connectionStatus, setConnectionStatus] = useState<MatchConnectionStatus>('idle')
   const { openMatchmaking, closeMatchmaking, pushToast, realMoneyMode } = useUIStore()
-  const { address, sendStake, isMiniPay, celoBalance, refreshBalance } = useMiniPayContext()
+  const { address, sendStake, isMiniPay, celoBalance, refreshBalance, cUSDAddress } = useMiniPayContext()
+  const escrowAddress = import.meta.env.VITE_ESCROW_ADDRESS
   const { applyMatchResult, refreshProfile, profile } = useProfileContext()
   const { recordMatchProgress } = useMissionContext()
   const queueTicketRef = useRef<string | undefined>(undefined)
   const queueTimeoutRef = useRef<number | undefined>(undefined)
-  const enableBotMatches = (import.meta.env.VITE_ENABLE_BOT_MATCHES ?? 'true') === 'true'
   const matchTimeoutMs = Number(import.meta.env.VITE_MATCH_TIMEOUT_MS ?? 15000)
   const matchPollIntervalMs = Number(import.meta.env.VITE_MATCH_POLL_INTERVAL_MS ?? 1500)
   const pollFailureLimit = 3
@@ -242,10 +252,86 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     [matchPollIntervalMs, pollFailureLimit, pushToast, stopMatchPolling, stopQueuePolling, withDeckPreviews],
   )
 
+  const processEscrowAndReady = useCallback(async (matchId: string, escrowId: string, playerAddress: string, stake: number) => {
+    if (!playerAddress || !matchId || !escrowId || !escrowAddress || !cUSDAddress) return
+    addDebugLog(`Match found! id=${matchId} escrowId=${escrowId}. Starting escrow funding...`)
+    let stakeSucceeded = false
+    try {
+      // 1. Fund Stake
+      await sendStake(stake, escrowId)
+      stakeSucceeded = true
+      
+      // 2. Mark Ready on-chain
+      addDebugLog(`Stake funded. Marking ready...`)
+      const provider = detectMiniPay()
+      if (!provider) throw new Error('MiniPay provider not found')
+
+      const gasLimit = Number(import.meta.env.VITE_MINIPAY_GAS_LIMIT ?? 500000)
+      const gasPriceGwei = Number(import.meta.env.VITE_MINIPAY_GAS_PRICE_GWEI ?? 5)
+      const gasPriceWei = gasPriceGwei * 1_000_000_000
+
+      const markReadyHash = await sendMarkReadyTx({
+        provider,
+        from: playerAddress,
+        contractAddress: escrowAddress,
+        matchId: escrowId,
+        gasLimit,
+        gasPriceWei,
+        feeCurrency: cUSDAddress,
+      })
+      addDebugLog(`Mark Ready tx sent: ${markReadyHash}. Waiting for confirmation...`)
+      await waitForReceipt(provider, markReadyHash)
+      addDebugLog(`Mark Ready confirmed.`)
+
+      // 3. Verify on-chain ready flags; if still not ready, retry markReady once
+      try {
+        const { playerAReady, playerBReady, raw } = await fetchEscrowReadyFlags(provider, escrowAddress, escrowId)
+        const ready = playerAReady && playerBReady
+        addDebugLog(`Escrow readiness check: A=${playerAReady} B=${playerBReady} raw=${raw ?? 'n/a'}`)
+        if (!ready) {
+          const retryHash = await sendMarkReadyTx({
+            provider,
+            from: playerAddress,
+            contractAddress: escrowAddress,
+            matchId: escrowId,
+            gasLimit,
+            gasPriceWei,
+            feeCurrency: cUSDAddress,
+          })
+          addDebugLog(`Mark Ready retry tx: ${retryHash}`)
+          await waitForReceipt(provider, retryHash)
+          addDebugLog(`Mark Ready retry confirmed.`)
+          const postRetry = await fetchEscrowReadyFlags(provider, escrowAddress, escrowId)
+          addDebugLog(`Escrow readiness after retry: A=${postRetry.playerAReady} B=${postRetry.playerBReady}`)
+        }
+      } catch (err) {
+        addDebugLog(`Escrow readiness check failed: ${(err as Error).message}`)
+      }
+    } catch (err) {
+      console.error('Escrow flow failed', err)
+      const revert = (err as { data?: string; message?: string })?.data as string | undefined
+      const decoded = decodeRevertSelector(revert || (err as Error)?.message)
+      addDebugLog(`Escrow flow failed: ${(err as Error).message} decoded=${decoded ?? 'n/a'}`)
+      pushToast(decoded ? `Ready failed: ${decoded}` : (err as Error)?.message ?? 'Failed to fund/ready match.', 'error')
+    } finally {
+      // Always notify backend once stake succeeded so UI can progress even if markReady tx failed
+      if (stakeSucceeded) {
+        try {
+          addDebugLog(`Notifying backend of readiness...`)
+          await Api.readyPing(matchId, playerAddress)
+          pushToast('Ready to play!', 'success')
+        } catch (err) {
+          console.error('readyPing failed', err)
+          addDebugLog(`readyPing failed: ${(err as Error).message}`)
+          pushToast('Ready sync failed. Tap re-sync or retry.', 'error')
+        }
+      }
+    }
+  }, [cUSDAddress, escrowAddress, pushToast, sendStake])
+
   const queueForMatch = useCallback(
     async (stake: number) => {
       const walletAddress = realMoneyMode ? address : resolveViewerWallet()
-      // For local/browser testing without MiniPay, allow realMoneyMode to fall back to demo if no MiniPay address.
       if (realMoneyMode && !address) {
         pushToast('MiniPay not connected, queuing with demo credits instead.', 'info')
       }
@@ -275,7 +361,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
           const requiredCelo = convertZarToCelo(stake)
           if (celoBalance < requiredCelo) {
             pushToast(
-              `Sorry, no funds to pay with. Need ~${formatCelo(requiredCelo)} CELO`,
+              `Sorry, no funds to pay with. Need ~${formatCelo(requiredCelo)} cUSD`,
               'error',
             )
             resetQueueState()
@@ -284,15 +370,14 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
             setQueueing(false)
             return undefined
           }
-          pushToast('Locking stake on-chain…', 'info')
-          const result = await sendStake(stake)
-          pushToast('Stake locked in escrow', 'success')
-          addDebugLog(`Queue escrow stake=${stake} tx=${result.txHash ?? 'no-tx'}`)
+          // --- CHANGED FLOW: Queue first, then stake ---
+          pushToast('Joining escrow queue...', 'info')
           response = await Api.queueEscrowMatch({
             walletAddress: walletAddress,
             stake,
-            botOpponent: enableBotMatches,
-            txHash: result.txHash,
+            botOpponent: false,
+            txHash: '', // Placeholder, will be handled after match found
+            matchId: '', // Placeholder, will use shared ID from backend
           })
         } else {
           response = await Api.queueDemoMatch({
@@ -301,24 +386,29 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
             botOpponent: allowBotMatches,
           })
         }
-        console.log('API queueDemoMatch/queueEscrowMatch response:', response);
-        if (!response) {
-          console.log('queueForMatch: No response, returning undefined.');
-          return undefined
-        }
+        
+        console.log('API queue response:', response);
+        if (!response) return undefined
+        
         void refreshProfile()
+        
         if (response.status === 'matched') {
-          console.log('queueForMatch: Response status is "matched".');
+          console.log('Response status is "matched".');
           const mapped = await withDeckPreviews(mapMatchPayloadToState(response.match, { wallet: walletAddress, username: profile?.username }))
-          console.log('queueForMatch: Mapped match:', mapped);
           setMatch(mapped)
           resetQueueState()
           closeMatchmaking()
           startMatchPolling(mapped!.id)
-          pushToast('Match found! Shuffling cards...', 'success')
+          
+          if (useEscrow && address && mapped?.escrowId) {
+             void processEscrowAndReady(mapped.id, mapped.escrowId, address, stake)
+          } else {
+             pushToast('Match found! Shuffling cards...', 'success')
+          }
           return mapped
         }
-        console.log('queueForMatch: Response status is not "matched", proceeding to queue ticket.');
+
+        console.log('Response status is not "matched", proceeding to queue ticket.');
         queueTicketRef.current = response.ticketId
         setQueueStatus('waiting')
         startQueueTimeout()
@@ -340,7 +430,12 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
               resetQueueState()
               closeMatchmaking()
               startMatchPolling(mapped!.id)
-              pushToast('Match found! Shuffling cards...', 'success')
+              
+              if (useEscrow && address && mapped?.escrowId) {
+                 void processEscrowAndReady(mapped.id, mapped.escrowId, address, stake)
+              } else {
+                 pushToast('Match found! Shuffling cards...', 'success')
+              }
             } catch (err) {
               // 404 means still waiting; ignore
             }
@@ -383,6 +478,8 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       celoBalance,
       withDeckPreviews,
       resolveViewerWallet,
+      cUSDAddress, 
+      processEscrowAndReady,
     ],
   )
 
@@ -558,6 +655,7 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
     const wallet = resolveViewerWallet()
     if (!wallet || !match?.id) return
     if (match.you.ready) return
+    if (match.escrowId) return // Skip auto-ready for escrow; handled manually after tx
     if (readyPingRef.current === match.id) return
     readyPingRef.current = match.id
     void Api.readyPing(match.id, wallet)
@@ -602,6 +700,16 @@ export const MatchProvider = ({ children }: { children: ReactNode }) => {
       connectionStatus,
       lastQueuedStake,
       lastQueuedMode: lastQueuedModeRef.current,
+      escrowAddress,
+      cUSDAddress,
+      retryMarkReady: async (matchId: string, escrowId: string, stake: number) => {
+        const wallet = resolveViewerWallet()
+        if (!wallet || !isMiniPay) {
+          pushToast('Connect MiniPay to retry ready.', 'error')
+          return
+        }
+        await processEscrowAndReady(matchId, escrowId, wallet, stake)
+      },
     }),
     [
       match,

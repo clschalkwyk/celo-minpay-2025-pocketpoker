@@ -1,6 +1,7 @@
 import type { Card, Match, UserProfile } from '../types.js'
 import { store } from '../data/store.js'
 import { customAlphabet } from 'nanoid'
+import { escrowService } from './escrow.js'
 
 const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 const suits = ['♠', '♥', '♦', '♣']
@@ -92,6 +93,18 @@ export const resolveMatch = async (match: Match) => {
   match.state = 'finished'
   match.winner = winnerWallet
   match.resultSummary = summary
+  if (match.escrowId && winnerWallet) {
+    match.payoutState = 'pending'
+  }
+
+  if (match.escrowId && match.winner) {
+    console.info(`GameLogic: Attempting escrow payout for match=${match.id}, escrowId=${match.escrowId}, winner=${match.winner}`)
+    void escrowService
+      .payoutMatch(match.escrowId, match.winner)
+      .then((txHash) => console.info(`GameLogic: Escrow payout initiated for match=${match.id}, txHash=${txHash}`))
+      .catch((err) => console.error(`GameLogic: Escrow payout failed for match=${match.id}`, err))
+  }
+
   await store.saveMatch(match)
   await updateProfilesAfterMatch(match)
   return match
@@ -144,8 +157,13 @@ const updateProfilesAfterMatch = async (match: Match) => {
   }
 }
 
-export const createMatchWithCards = async (stake: number, playerA: UserProfile, playerB: UserProfile) => {
-  const match = await store.createMatch(stake, playerA, playerB)
+export const createMatchWithCards = async (
+  stake: number,
+  playerA: UserProfile,
+  playerB: UserProfile,
+  escrowId?: string,
+) => {
+  const match = await store.createMatch(stake, playerA, playerB, escrowId)
   match.playerA.cards = dealHand()
   if (match.playerB) match.playerB.cards = dealHand()
   await store.saveMatch(match)

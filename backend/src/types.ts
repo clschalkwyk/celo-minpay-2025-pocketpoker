@@ -114,6 +114,7 @@ export type MatchState = 'queued' | 'active' | 'finished' | 'cancelled'
 
 export type Match = {
   id: string
+  escrowId?: string // On-chain match ID for payout
   stake: number
   pot: number
   createdAt: number
@@ -122,6 +123,9 @@ export type Match = {
   playerB?: PlayerSeat
   winner?: WalletAddress
   resultSummary?: string
+  payoutState?: 'pending' | 'paid'
+  payoutTxHash?: string
+  payoutSettledAt?: number
 }
 
 export type QueueTicket = {
@@ -133,4 +137,5 @@ export type QueueTicket = {
 
 export type QueueOptions = {
   botOpponent?: boolean
+  escrowId?: string
 }

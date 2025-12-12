@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from 'fastify'
+import { randomBytes } from 'node:crypto'
 import type { MatchmakingService } from '../services/matchmaking.js'
 import { store } from '../data/store.js'
 import { createMatchWithCards, resolveMatch } from '../services/gameLogic.js'
@@ -16,8 +17,8 @@ const MATCH_READY_TIMEOUT_MS = Number(process.env.MATCH_READY_TIMEOUT_MS ?? 5000
 const useDynamoQueue = false
 
 export async function registerMatchRoutes(app: FastifyInstance) {
-  const queuePlayer = async (walletAddress: string, stake: number, botOpponent?: boolean) =>
-    app.matchmaking.queuePlayer(walletAddress, stake, { botOpponent })
+  const queuePlayer = async (walletAddress: string, stake: number, botOpponent?: boolean, escrowId?: string) =>
+    app.matchmaking.queuePlayer(walletAddress, stake, { botOpponent, escrowId })
 
   const attachDeckPreviews = (match: Match) => {
     const decks = store.getDecks()
@@ -34,6 +35,7 @@ export async function registerMatchRoutes(app: FastifyInstance) {
   }
 
   const applyReadyTimeout = async (match: Match) => {
+    if (match.escrowId) return match
     const elapsed = Date.now() - match.createdAt
     if (elapsed < MATCH_READY_TIMEOUT_MS) return match
     let changed = false
@@ -88,7 +90,7 @@ export async function registerMatchRoutes(app: FastifyInstance) {
     }
   }
 
-  type EscrowQueuePayload = DemoQueuePayload & { txHash?: string }
+  type EscrowQueuePayload = DemoQueuePayload & { txHash?: string; matchId?: string }
 
   const handleEscrowQueue = async (
     payload: EscrowQueuePayload,
@@ -96,12 +98,13 @@ export async function registerMatchRoutes(app: FastifyInstance) {
     log: FastifyBaseLogger,
   ) => {
     const body = payload
-    if (!body?.walletAddress || !body?.stake || !body?.txHash) {
-      return reply.status(400).send({ error: 'walletAddress, stake, and txHash are required' })
+    if (!body?.walletAddress || !body?.stake) {
+      return reply.status(400).send({ error: 'walletAddress and stake are required' })
     }
-    log.info({ walletAddress: body.walletAddress, stake: body.stake, txHash: body.txHash }, 'escrow queue request')
-    log.info({ walletAddress: body.walletAddress, stake: body.stake, txHash: body.txHash }, 'escrow stake confirmed')
-    const queued = await queuePlayer(body.walletAddress, body.stake, body.botOpponent)
+    const escrowId = body.matchId && body.matchId.startsWith('0x') ? body.matchId : `0x${randomBytes(32).toString('hex')}`
+    log.info({ walletAddress: body.walletAddress, stake: body.stake, txHash: body.txHash, matchId: escrowId }, 'escrow queue request')
+    log.info({ walletAddress: body.walletAddress, stake: body.stake }, 'escrow queue confirmed (stake pending)')
+    const queued = await queuePlayer(body.walletAddress, body.stake, body.botOpponent, escrowId)
     if (queued.status === 'matched' && queued.match) {
       attachDeckPreviews(queued.match)
     }
@@ -190,6 +193,11 @@ export async function registerMatchRoutes(app: FastifyInstance) {
     if (!body?.walletAddress) return reply.status(400).send({ error: 'walletAddress is required' })
     let match = await store.markPlayerReady(params.id, body.walletAddress)
     if (!match) return reply.status(404).send({ error: 'Match not found' })
+
+    if (match.playerA.ready && match.playerB?.ready) {
+      match = await resolveMatch(match)
+    }
+
     match = await applyReadyTimeout(match)
     attachDeckPreviews(match)
     return { match }

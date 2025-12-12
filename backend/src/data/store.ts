@@ -57,7 +57,9 @@ export interface DataStore {
   findMatchForTicket(ticketId: string): Promise<Match | undefined>
   clearTicketMatch(ticketId: string): Promise<void>
   saveMatch(match: Match): Promise<void>
-  createMatch(stake: number, playerA: UserProfile, playerB: UserProfile): Promise<Match>
+  createMatch(stake: number, playerA: UserProfile, playerB: UserProfile, escrowId?: string): Promise<Match>
+  listFinishedEscrowMatchesPendingPayout(): Promise<Match[]>
+  markPayoutComplete(matchId: string, txHash?: string): Promise<void>
   reset(): Promise<void>
 }
 
@@ -196,8 +198,16 @@ class MemoryStoreAdapter implements DataStore {
     this.backing.saveMatch(match)
   }
 
-  createMatch(stake: number, playerA: UserProfile, playerB: UserProfile) {
-    return Promise.resolve(this.backing.createMatch(stake, playerA, playerB))
+  createMatch(stake: number, playerA: UserProfile, playerB: UserProfile, escrowId?: string) {
+    return Promise.resolve(this.backing.createMatch(stake, playerA, playerB, escrowId))
+  }
+
+  listFinishedEscrowMatchesPendingPayout() {
+    return Promise.resolve(this.backing.listFinishedEscrowMatchesPendingPayout())
+  }
+
+  async markPayoutComplete(matchId: string, txHash?: string) {
+    this.backing.markPayoutComplete(matchId, txHash)
   }
 
   async reset() {

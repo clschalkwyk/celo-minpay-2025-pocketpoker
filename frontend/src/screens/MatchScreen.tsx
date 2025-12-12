@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { GameTable } from '../components/match/GameTable'
 import { ResultOverlay } from '../components/match/ResultOverlay'
 import { useMatch } from '../hooks/useMatch'
+import { useMiniPay } from '../hooks/useMiniPay'
 import { SecondaryButton } from '../components/ui/SecondaryButton'
 import { useUIStore } from '../hooks/useUIStore'
 import { deriveLocalResult } from '../lib/handEvaluator'
@@ -57,8 +58,9 @@ const reduceResultState = (state: ResultState, action: ResultAction): ResultStat
 export const MatchScreen = () => {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { match, acknowledgeResult, queueForMatch, connectionStatus, resyncMatch, loadMatchById } = useMatch()
+  const { match, acknowledgeResult, queueForMatch, connectionStatus, resyncMatch, loadMatchById, retryMarkReady, escrowAddress, cUSDAddress } = useMatch()
   const { setSelectedStake } = useUIStore()
+  const miniPay = useMiniPay()
   const [suppressAutoLoad, setSuppressAutoLoad] = useState(false)
   const [resultState, dispatch] = useReducer(reduceResultState, {
     currentMatchId: match?.id,
@@ -228,6 +230,26 @@ export const MatchScreen = () => {
                 </div>
               ))}
             </div>
+            {match.escrowId && miniPay.isMiniPay && (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-xs text-gray-200">
+                <p className="text-[10px] uppercase tracking-[0.35em] text-gray-500">On-chain ready</p>
+                <p className="text-[11px] text-gray-400">
+                  Escrow: {match.escrowId.slice(0, 10)}…{match.escrowId.slice(-6)}
+                </p>
+                <p className="text-[11px] text-gray-400">
+                  Contract: {escrowAddress ?? 'unknown'} · Gas token: {cUSDAddress ?? 'cUSD'}
+                </p>
+                <p className="mt-2 text-xs text-amber-200">
+                  If syncing stalls, tap Retry Ready to resend the on-chain ready tx.
+                </p>
+                <SecondaryButton
+                  className="mt-3 w-full text-xs"
+                  onClick={() => void retryMarkReady(match.id, match.escrowId!, match.stake)}
+                >
+                  Retry Ready on-chain
+                </SecondaryButton>
+              </div>
+            )}
             <p className="mt-3 text-[11px] uppercase tracking-[0.3em] text-gray-500">
               Auto-starting together once locked.
             </p>

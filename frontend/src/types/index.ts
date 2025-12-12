@@ -132,6 +132,7 @@ export type MatchPhase = 'idle' | 'queueing' | 'ready' | 'active' | 'result'
 
 export type MatchState = {
   id: string
+  escrowId?: string // On-chain match ID for payout and ready checks
   stake: number
   pot: number
   phase: MatchPhase
